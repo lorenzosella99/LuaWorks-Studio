@@ -1041,11 +1041,19 @@ export default function App() {
 
             <div className="settings-section downloads-section">
               <div className="settings-section-title"><Download size={17} /> Downloads</div>
-              <p>Instale o AI Workbench no seu dispositivo. No Linux, escolha o formato recomendado para sua distribuição.</p>
+              <p>Instale o AI Workbench no seu dispositivo. Escolha a versão adequada para Windows, Linux ou Android.</p>
               <div className="download-options">
                 <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Android.apk">
                   <span className="download-option-icon"><Smartphone size={17} /></span>
                   <span><strong>Android · APK</strong><small>Instalação em celulares e tablets Android</small></span><Download size={15} />
+                </a>
+                <a className="download-option download-option--recommended" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Windows-x64-Setup.exe">
+                  <span className="download-option-icon"><Monitor size={17} /></span>
+                  <span><strong>Windows · Instalador x64 (.exe)</strong><small>Instalação simples no Windows 10 e 11</small></span><Download size={15} />
+                </a>
+                <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Windows-x64-Portable.zip">
+                  <span className="download-option-icon"><Package size={17} /></span>
+                  <span><strong>Windows · Portátil x64 (.zip)</strong><small>Extraia e execute, sem assistente de instalação</small></span><Download size={15} />
                 </a>
                 <a className="download-option download-option--recommended" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Linux-x86_64.AppImage">
                   <span className="download-option-icon"><Monitor size={17} /></span>
@@ -1064,7 +1072,7 @@ export default function App() {
                   <span><strong>Linux · Portátil TAR.GZ</strong><small>Para instalação manual em outros ambientes Linux</small></span><Download size={15} />
                 </a>
               </div>
-              <p className="download-footnote">Os pacotes Linux são para computadores x86_64. O AppImage é a opção mais simples para a maioria dos desktops.</p>
+              <p className="download-footnote">Windows: versões x64 para Windows 10 e 11. O instalador configura o WebView2 quando necessário; a versão portátil usa o WebView2 já instalado no sistema. Linux: pacotes x86_64; o AppImage é a opção mais simples para a maioria dos desktops.</p>
             </div>
             <div className="settings-section">
               <div className="settings-section-title"><Zap size={17} /> Diagnóstico das APIs</div>
