@@ -391,3 +391,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .appearance-width-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .appearance-color-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Seletor compacto de modo e esforço dentro do compositor do chat. */
+.composer-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.chat-mode-control { position: relative; flex: 0 0 auto; }
+.chat-mode-trigger { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 10px; color: #c4c4c4; background: #1b1b1b; border: 1px solid rgba(255,255,255,.09); border-radius: 9px; cursor: pointer; font-size: 10px; transition: .15s; }
+.chat-mode-trigger:hover, .chat-mode-trigger[aria-expanded="true"] { color: #eee; border-color: color-mix(in srgb, var(--accent) 38%, transparent); background: #222; }
+.chat-mode-trigger svg:first-child { color: var(--accent); }
+.chat-mode-menu { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 40; width: min(390px, calc(100vw - 30px)); max-height: min(68vh, 550px); overflow-y: auto; padding: 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: #1b1b1b; box-shadow: 0 18px 65px rgba(0,0,0,.55); animation: modal-in .14s ease-out; }
+.chat-menu-heading { margin: 0 0 9px; color: #888; font: 500 9px 'DM Mono', monospace; letter-spacing: 1px; text-transform: uppercase; }
+.chat-mode-options { display: grid; gap: 4px; }
+.chat-mode-option { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px; color: #999; background: transparent; border: 1px solid transparent; border-radius: 8px; text-align: left; cursor: pointer; }
+.chat-mode-option:hover { background: #242424; color: #ddd; }
+.chat-mode-option--active { color: #e9e9e9; background: color-mix(in srgb, var(--accent) 7%, #202020); border-color: color-mix(in srgb, var(--accent) 24%, transparent); }
+.chat-mode-option > svg:first-child { flex: 0 0 auto; color: var(--accent); }
+.chat-mode-option > svg:last-child { margin-left: auto; color: var(--accent); }
+.chat-mode-option span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.chat-mode-option strong { font-size: 10px; font-weight: 600; }
+.chat-mode-option small { color: #777; font-size: 9px; line-height: 1.35; }
+.chat-menu-divider { height: 1px; margin: 12px 0; background: rgba(255,255,255,.07); }
+.effort-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-height: 36px; padding: 4px 0; }
+.effort-setting-label { color: #b8b8b8; font-size: 10px; white-space: nowrap; }
+.effort-segment-group { display: inline-flex; gap: 2px; padding: 3px; background: #111; border: 1px solid rgba(255,255,255,.055); border-radius: 7px; }
+.effort-segment { padding: 5px 8px; color: #777; background: transparent; border: 0; border-radius: 5px; font-size: 9px; cursor: pointer; }
+.effort-segment:hover { color: #ddd; }
+.effort-segment--active { color: var(--accent-ink); background: linear-gradient(110deg, var(--accent), var(--secondary)); font-weight: 700; }
+.effort-setting-row--note { align-items: flex-start; margin-top: 2px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
+.effort-setting-row--note small { max-width: 210px; color: #777; font-size: 9px; line-height: 1.4; text-align: right; }
+.chat-menu-note { margin: 9px 0 0; color: #777; font-size: 9px; line-height: 1.5; }
+@media (max-width: 600px) {
+  .composer-bottom { align-items: flex-end; }
+  .composer-hints { min-width: 0; gap: 0; }
+  .keyboard-hint { display: none; }
+  .chat-mode-trigger { padding: 0 8px; }
+  .chat-mode-menu { right: -38px; }
+}
