@@ -176,8 +176,8 @@ function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings;
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
   { id: 'auto', label: 'Automático', short: 'Auto', description: 'A IA escolhe o modo mais adequado para cada pedido' },
   { id: 'general', label: 'Código Geral', short: 'Código', description: 'TypeScript, Python, SQL e web' },
-  { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · análise estática sem Gemini' },
-  { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Geração visual pelo Pollinations' },
+  { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · revisão e validação de código' },
+  { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Criação visual a partir de descrições' },
   { id: 'personality', label: 'Personalidade', short: 'Persona', description: 'Converse com o estilo e personalidade que você definir' },
 ];
 
@@ -931,7 +931,7 @@ export default function App() {
             />
             <div className="composer-bottom">
               <div className="composer-hints">
-                <span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Pollinations' : mode === 'stormworks' ? 'Geração + revisão Lua' : mode === 'personality' ? 'Personalidade' : mode === 'auto' ? 'Seleção automática' : 'Código geral'}</span>
+                <span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Gerador de imagens' : mode === 'stormworks' ? 'Geração + revisão Lua' : mode === 'personality' ? 'Personalidade' : mode === 'auto' ? 'Seleção automática' : 'Código geral'}</span>
                 <span className="keyboard-hint">Enter para enviar · Shift + Enter para nova linha</span>
               </div>
               <div className="composer-actions">
