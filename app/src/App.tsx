@@ -89,7 +89,7 @@ function getWelcomeCopy(user: User | null, date: Date) {
     .find((value) => typeof value === 'string' && value.trim().length > 0);
   const fallbackName = user?.email?.toLowerCase() === ALLOWED_EMAIL ? 'Loren' : ALLOWED_USERNAME;
   const rawName = typeof configuredName === 'string' ? configuredName : fallbackName;
-  const name = rawName.trim().split(/\\s+/)[0] || 'amigo';
+  const name = rawName.trim().split(/\s+/)[0] || 'amigo';
 
   const hour = date.getHours();
   const motivationalLines = [
@@ -105,15 +105,15 @@ function getWelcomeCopy(user: User | null, date: Date) {
   const encouragement = motivationalLines[(date.getDate() + hour) % motivationalLines.length];
 
   if (hour < 6) {
-    return { title: `Madrugando, ${name}?`, subtitle: 'As ideias também aparecem de madrugada. Vamos construir algo legal?' };
+    return { title: `Madrugando, ${name}?`, subtitle: 'As ideias também aparecem de madrugada. Vamos construir algo legal?', encouragement };
   }
   if (hour < 12) {
-    return { title: `Bom dia, ${name}!`, subtitle: 'Que tal começar o dia tirando uma ideia do papel?' };
+    return { title: `Bom dia, ${name}!`, subtitle: 'Que tal começar o dia tirando uma ideia do papel?', encouragement };
   }
   if (hour < 18) {
-    return { title: `Boa tarde, ${name}!`, subtitle: 'Ainda dá tempo de transformar aquela ideia em projeto.' };
+    return { title: `Boa tarde, ${name}!`, subtitle: 'Ainda dá tempo de transformar aquela ideia em projeto.', encouragement };
   }
-  return { title: `Boa noite, ${name}!`, subtitle: 'Feche o dia criando algo de que você possa se orgulhar.' };
+  return { title: `Boa noite, ${name}!`, subtitle: 'Feche o dia criando algo de que você possa se orgulhar.', encouragement };
 }
 
 function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings; onSave: (next: AppearanceSettings) => void }) {
@@ -914,7 +914,7 @@ export default function App() {
               <div className="welcome-overline">SEU AMBIENTE DE CRIAÇÃO</div>
               <h1>{welcomeCopy.title}</h1>
               <p>{welcomeCopy.subtitle}</p>
-              <div className="welcome-motivation">{['Uma boa ideia pode ser o começo de algo incrível.', 'Não precisa sair perfeito de primeira. O importante é começar.', 'Cada pequeno avanço também conta.', 'Sua curiosidade pode transformar uma ideia em algo real.', 'Um passo de cada vez ainda é progresso.'][(welcomeTime.getDate() + welcomeTime.getHours()) % 5]}</div>
+              <div className="welcome-motivation">{welcomeCopy.encouragement}</div>
               <div className="suggestion-grid">
                 <button className="suggestion-card" onClick={() => { void changeMode('general'); setDraft('Crie uma aplicação web moderna com React e TypeScript para '); inputRef.current?.focus(); }}>
                   <span className="suggestion-icon suggestion-icon--code"><Code2 size={17} /></span>
