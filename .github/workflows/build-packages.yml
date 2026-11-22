@@ -372,7 +372,9 @@ jobs:
             Downloads oficiais do AI Workbench.
 
             Windows x64: instalador NSIS (.exe) e versão portátil (.zip).
-            O instalador usa o WebView2 do Windows e baixa o bootstrapper somente se necessário.
+            Linux x86_64: AppImage, DEB, RPM e TAR.GZ portátil.
+            Android: APK para instalação manual.
+            O instalador Windows usa o WebView2 do sistema e baixa o bootstrapper somente se necessário.
           files: |
             ${{ runner.temp }}/windows-package-output/AI-Workbench-Windows-x64-Setup.exe
             ${{ runner.temp }}/windows-package-output/AI-Workbench-Windows-x64-Portable.zip
