@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'source.tar.xz.b64'
+      - 'source.part0*'
       - '.github/workflows/build-packages.yml'
   workflow_dispatch:
 
@@ -21,9 +21,22 @@ jobs:
 
       - name: Reassemble source
         run: |
+          cat source.part00 source.part01 source.part02 source.part03 source.part04 source.part05 source.part06 > source.tar.xz.b64
           base64 --decode source.tar.xz.b64 | tar -xJf -
           test -f ai-workbench/package.json
           test ! -e ai-workbench/.env
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path("ai-workbench/src/App.tsx")
+          source = app.read_text()
+          start = source.index("  useEffect(() => {\n    if (!supabase) {")
+          end = source.index("\n  }, []);", start) + len("\n  }, []);")
+          block = source[start:end]
+          block = block.replace("  useEffect(() => {\n    if (!supabase) {", "  useEffect(() => {\n    const client = supabase;\n    if (!client) {", 1)
+          block = block.replace("supabase.auth.", "client.auth.")
+          app.write_text(source[:start] + block + source[end:])
+          Path("ai-workbench/src/vite-env.d.ts").write_text('/// <reference types="vite/client" />\n')
+          PY
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
