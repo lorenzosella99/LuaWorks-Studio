@@ -12,6 +12,8 @@ import type { ChatMessage, ChatMode, Conversation } from './types';
 const ALLOWED_EMAIL = 'lorenzosella99@gmail.com';
 const ALLOWED_USERNAME = 'loren';
 
+type ApiProbe = { id: string; title: string; status: 'idle' | 'running' | 'ok' | 'error'; detail: string };
+
 function isAllowedAccount(user: User | null | undefined) {
   return Boolean(user && user.email?.trim().toLowerCase() === ALLOWED_EMAIL);
 }
@@ -63,6 +65,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [githubStatus, setGithubStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
+  const [apiProbes, setApiProbes] = useState<ApiProbe[]>([]);
+  const [apiTestBusy, setApiTestBusy] = useState(false);
   const [githubToken, setGithubToken] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
   const [saveModal, setSaveModal] = useState<{ code: string; language: string } | null>(null);
@@ -388,6 +392,99 @@ export default function App() {
     }
   }
 
+  async function testAllApis() {
+    if (!supabase || apiTestBusy) return;
+    setApiTestBusy(true);
+    const probes: ApiProbe[] = [
+      { id: 'database', title: 'Supabase · Banco e RLS', status: 'running', detail: 'Consultando conversas com a sessão atual…' },
+      { id: 'general', title: 'Código Geral · Groq', status: 'idle', detail: 'Aguardando teste contextual.' },
+      { id: 'stormworks', title: 'Stormworks Lua · Groq + análise local', status: 'idle', detail: 'Aguardando teste contextual.' },
+      { id: 'image', title: 'Geração de imagens · Pollinations', status: 'idle', detail: 'Aguardando teste contextual. Pode consumir créditos.' },
+      { id: 'personality', title: 'Personalidade · OpenRouter', status: 'idle', detail: 'Aguardando teste contextual.' },
+      { id: 'github', title: 'GitHub · Edge Function', status: 'idle', detail: 'Aguardando verificação de conexão.' },
+    ];
+    setApiProbes(probes);
+    const updateProbe = (id: string, status: ApiProbe['status'], detail: string) => {
+      setApiProbes((current) => current.map((item) => item.id === id ? { ...item, status, detail } : item));
+    };
+
+    try {
+      const { error } = await supabase.from('conversations').select('id').limit(1);
+      if (error) throw error;
+      updateProbe('database', 'ok', 'Supabase respondeu e a leitura respeitou as políticas RLS da sessão.');
+    } catch (error) {
+      updateProbe('database', 'error', error instanceof Error ? error.message : 'Falha ao consultar o banco.');
+    }
+
+    const invokeChat = async (
+      id: string,
+      modeToTest: ChatMode,
+      messagesToSend: Array<{ role: 'user' | 'assistant'; content: string }>,
+      checkAnswer?: (answer: string) => boolean,
+      contextLabel = 'histórico enviado'
+    ) => {
+      updateProbe(id, 'running', 'Enviando conversa de teste com mensagens anteriores…');
+      try {
+        const { data, error } = await supabase!.functions.invoke('chat-ai', { body: { mode: modeToTest, messages: messagesToSend } });
+        if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
+        if (typeof data?.error === 'string') throw new Error(data.error);
+        if (modeToTest === 'image') {
+          if (typeof data?.image_url !== 'string' || !data.image_url.startsWith('https://')) throw new Error('O provedor não retornou uma URL de imagem válida.');
+          updateProbe(id, 'ok', 'Pollinations respondeu com uma URL HTTPS; o pedido foi enviado junto com o contexto anterior. A imagem precisa ser aberta para inspeção visual.');
+          return;
+        }
+        const answer = typeof data?.answer === 'string' ? data.answer : '';
+        if (!answer.trim()) throw new Error('A API respondeu sem texto.');
+        if (checkAnswer && !checkAnswer(answer)) throw new Error('A API respondeu, mas não recuperou o dado de contexto solicitado no teste.');
+        updateProbe(id, 'ok', 'Resposta recebida e validada com ' + contextLabel + '.');
+      } catch (error) {
+        updateProbe(id, 'error', error instanceof Error ? error.message : 'Falha na chamada do provedor.');
+      }
+    };
+
+    await invokeChat('general', 'general', [
+      { role: 'user', content: 'Guarde para a próxima mensagem: código de contexto LAGOA-VERDE-91. O backend deste app é Supabase e o site usa GitHub Pages.' },
+      { role: 'assistant', content: 'Entendido. Vou manter o código e a informação do backend no contexto.' },
+      { role: 'user', content: 'Qual é o código de contexto e qual backend este app usa? Responda diretamente.' },
+    ], (answer) => answer.includes('LAGOA-VERDE-91') && /supabase/i.test(answer));
+
+    await invokeChat('stormworks', 'stormworks', [
+      { role: 'user', content: 'Requisito para o microcontrolador: leia input.getNumber(7) e envie o valor para output.setNumber(8, valor). Use Stormworks Lua vanilla.' },
+      { role: 'assistant', content: 'Entendido: entrada numérica 7 e saída numérica 8.' },
+      { role: 'user', content: 'Agora gere o código completo, com onTick(), transferindo o valor da entrada 7 para a saída 8. Não mude os canais.' },
+    ], (answer) => {
+      const block = answer.match(/\x60{3}(?:lua)?[ \t]*\r?\n([\s\S]*?)\x60{3}/i)?.[1] ?? '';
+      return Boolean(block) && Array.from(block).length <= 4096
+        && /input\.getNumber\s*\(\s*7\s*\)/i.test(block)
+        && /output\.setNumber\s*\(\s*8\s*,/i.test(block);
+    }, 'mensagens anteriores + conferência dos canais 7 e 8 e limite de 4.096 caracteres');
+
+    await invokeChat('image', 'image', [
+      { role: 'user', content: 'O personagem para manter nas próximas imagens é um robô amarelo pequeno com uma antena azul.' },
+      { role: 'assistant', content: 'Entendido. Vou manter o robô amarelo e a antena azul.' },
+      { role: 'user', content: 'Gere uma imagem desse mesmo robô dentro de uma oficina escura, com iluminação cinematográfica.' },
+    ]);
+
+    await invokeChat('personality', 'personality', [
+      { role: 'user', content: 'Neste teste, use o jeito de um narrador de nave espacial e guarde o código HELIO-ALFA-7.' },
+      { role: 'assistant', content: 'Comando recebido, tripulante. Contexto armazenado.' },
+      { role: 'user', content: 'Qual código foi armazenado? Responda com o código exato.' },
+    ], (answer) => answer.includes('HELIO-ALFA-7'));
+
+    updateProbe('github', 'running', 'Consultando o estado da Edge Function do GitHub…');
+    try {
+      const { data, error } = await supabase.functions.invoke('github-integration', { body: { action: 'status' } });
+      if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
+      if (typeof data?.connected !== 'boolean') throw new Error(data?.error ?? 'Resposta inesperada da integração GitHub.');
+      updateProbe('github', 'ok', data.connected
+        ? 'Edge Function respondeu e há um token GitHub conectado.'
+        : 'Edge Function respondeu; nenhum token GitHub está conectado. A gravação de commits não foi testada.');
+    } catch (error) {
+      updateProbe('github', 'error', error instanceof Error ? error.message : 'Falha na integração GitHub.');
+    }
+    setApiTestBusy(false);
+  }
+
   async function openSettings() {
     setSettingsOpen(true);
     setGithubStatus('loading');
@@ -678,6 +775,23 @@ export default function App() {
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
+            <div className="settings-section">
+              <div className="settings-section-title"><Zap size={17} /> Diagnóstico das APIs</div>
+              <p>Teste o banco e os quatro modos de IA enviando mensagens anteriores para conferir se cada modo respeita o contexto da conversa.</p>
+              <button className="primary-button api-test-button" type="button" onClick={() => { void testAllApis(); }} disabled={apiTestBusy}>
+                {apiTestBusy ? 'Testando integrações…' : 'Testar todas as APIs'}
+              </button>
+              <div className="api-test-warning">O teste de imagens pode consumir créditos do provedor. Os testes usam solicitações reais e só começam quando você clicar.</div>
+              {apiProbes.length > 0 && <div className="api-test-list">
+                {apiProbes.map((probe) => (
+                  <div className="api-test-row" key={probe.id}>
+                    <span className={'api-test-dot api-test-dot--' + probe.status} />
+                    <div><strong>{probe.title}</strong><span>{probe.detail}</span></div>
+                    <small>{probe.status === 'running' ? 'Testando' : probe.status === 'ok' ? 'OK' : probe.status === 'error' ? 'Falhou' : 'Pendente'}</small>
+                  </div>
+                ))}
+              </div>}
+            </div>
             <div className="settings-section">
               <div className="settings-section-title"><Github size={17} /> Integração com GitHub</div>
               <p>Conecte um Personal Access Token para salvar blocos de código diretamente nos seus repositórios.</p>
