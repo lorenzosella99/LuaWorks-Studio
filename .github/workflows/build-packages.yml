@@ -58,13 +58,10 @@ jobs:
           VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
 
-      - name: Install Android SDK packages
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          export PATH="$ANDROID_HOME/cmdline-tools/16.0/bin:$ANDROID_HOME/platform-tools:$PATH"
-          yes | "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" --licenses >/dev/null
-          "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Generate native Android project
         working-directory: ai-workbench
