@@ -476,8 +476,9 @@ export default function App() {
       const { data, error } = await supabase.functions.invoke('github-integration', { body: { action: 'status' } });
       if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
       if (typeof data?.connected !== 'boolean') throw new Error(data?.error ?? 'Resposta inesperada da integração GitHub.');
+      if (data.connected && data.valid === false) throw new Error(data.error ?? 'O token salvo foi recusado pelo GitHub. Reconecte a integração.');
       updateProbe('github', 'ok', data.connected
-        ? 'Edge Function respondeu e há um token GitHub conectado.'
+        ? 'Edge Function respondeu e o token foi validado pelo GitHub' + (data.login ? ' (' + data.login + ').' : '.')
         : 'Edge Function respondeu; nenhum token GitHub está conectado. A gravação de commits não foi testada.');
     } catch (error) {
       updateProbe('github', 'error', error instanceof Error ? error.message : 'Falha na integração GitHub.');
@@ -490,7 +491,7 @@ export default function App() {
     setGithubStatus('loading');
     if (!supabase) return;
     const { data, error } = await supabase.functions.invoke('github-integration', { body: { action: 'status' } });
-    setGithubStatus(!error && data?.connected ? 'connected' : 'disconnected');
+    setGithubStatus(!error && data?.connected && data?.valid !== false ? 'connected' : 'disconnected');
   }
 
   async function saveGithubToken(event: FormEvent) {
