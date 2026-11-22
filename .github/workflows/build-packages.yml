@@ -58,11 +58,10 @@ jobs:
           VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Generate native Android project
         working-directory: ai-workbench
