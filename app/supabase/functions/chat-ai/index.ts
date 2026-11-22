@@ -8,7 +8,8 @@ const STORM_MODEL = "qwen/qwen3.8-27b";
 const CODE_MODEL = "openai/gpt-oss-120b";
 const PERSONA_MODEL = "openrouter/free";
 const IMAGE_MODEL = "black-forest-labs/flux.1-schnell";
-const GENERAL_PROMPT = "Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Entregue código completo e executável, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
+const CHAT_PROMPT = "Você é o AI Workbench, um assistente conversacional útil, natural e atento ao contexto. Responda no idioma usado pelo usuário. Em conversas comuns, seja direto, simpático e proporcional ao pedido; uma saudação como 'bom dia' merece uma saudação breve, não um texto longo. Não gere código, blocos de código, arquivos ou projetos a menos que o usuário peça isso claramente. Para perguntas, explique normalmente e use exemplos simples quando ajudarem. Use o histórico fornecido para manter continuidade e respeitar os requisitos já mencionados. Não invente fatos, ações ou testes executados.";
+const CODE_PROMPT = "Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Quando o usuário pedir código, entregue código completo e executável, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
 const STORM_PROMPT = "Você é especialista em microcontroladores vanilla de Stormworks. REGRAS: cada bloco Lua tem no máximo 4096 caracteres; use somente callbacks onTick() e onDraw(); use apenas APIs input, output, screen, property, map, async, math, table e string. Nunca use os, io, require, package, debug, filesystem, rede ou bibliotecas externas. Não invente APIs, canais ou portas. Entregue código completo, explique canais de entrada/saída, valide divisões por zero e inicialização. Não prometa ausência de bugs; inclua testes. Retorne no máximo um bloco Markdown Lua com até 4096 caracteres. Se foi pedido código inteiro, nunca retorne trecho.";
 const PERSONALITY_PROMPT = "Você é o modo Personalidade do AI Workbench. Adote o tom, papel, personagem ou estilo descrito pelo usuário e mantenha consistência. Pode usar humor e expressividade. Não alegue ser pessoa real, não invente lembranças reais e não confunda interpretação com fatos. Seja útil e honesto.";
 
@@ -35,8 +36,8 @@ async function authorize(req: Request) {
   if (error || !data.user) throw new Error("Sessão inválida ou expirada.");
   if (data.user.email?.trim().toLowerCase() !== OWNER) throw new Error("Acesso negado. Conta não autorizada.");
 }
-async function openAI(url: string, key: string, model: string, messages: Array<{ role: string; content: string }>, temperature = 0.2, extraHeaders: Record<string, string> = {}) {
-  const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", ...extraHeaders }, body: JSON.stringify({ model, messages, temperature, max_tokens: 8192, stream: false }) });
+async function openAI(url: string, key: string, model: string, messages: Array<{ role: string; content: string }>, temperature = 0.2, extraHeaders: Record<string, string> = {}, maxTokens = 8192) {
+  const res = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", ...extraHeaders }, body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false }) });
   const raw = await res.text();
   let data: any = {};
   try { data = JSON.parse(raw); } catch {}
@@ -45,75 +46,142 @@ async function openAI(url: string, key: string, model: string, messages: Array<{
   if (typeof answer !== "string" || !answer.trim()) throw new Error(model + " retornou resposta vazia.");
   return answer.trim();
 }
-function luaBlocks(text: string) {
-  const pattern = /```(?:lua)?[^\S\r\n]*\r?\n([\s\S]*?)```/gi;
-  return [...text.matchAll(pattern)].map((match) => match[1].replace(/\r?\n$/, ""));
+function luaBlocks(response: string): string[] {
+  const matches = Array.from(response.matchAll(/\x60{3}(?:lua)?[ \t]*\r?\n([\s\S]*?)\x60{3}/gi));
+  return matches.map((match) => (match[1] ?? "").replace(/\r?\n$/, ""));
 }
-function analyzeLua(code: string) {
-  const masked = code
-    .replace(/--\[\[[\s\S]*?\]\]/g, (value) => value.replace(/[^\r\n]/g, " "))
-    .replace(/--[^\r\n]*/g, (value) => " ".repeat(value.length))
-    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (value) => value.replace(/[^\r\n]/g, " "));
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const count = Array.from(code).length;
-  if (count > 4096) errors.push(`bloco com ${count} caracteres (máximo 4096)`);
-  const blocked = masked.match(/\b(?:os|io|package|debug)\s*[.:]|\b(?:require|dofile|loadfile)\s*\(/gi);
-  if (blocked?.length) errors.push("API não permitida: " + [...new Set(blocked.map((item) => item.trim()))].join(", "));
-  const stack: string[] = [];
-  for (const token of masked.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
-    const word = token[0].toLowerCase();
-    if (["function", "if", "do", "repeat"].includes(word)) stack.push(word);
-    else if (word === "end") {
-      if (!stack.length || stack[stack.length - 1] === "repeat") { errors.push("end sem bloco compatível"); break; }
-      stack.pop();
-    } else if (word === "until") {
-      if (stack[stack.length - 1] !== "repeat") { errors.push("until sem repeat correspondente"); break; }
-      stack.pop();
-    }
-  }
-  if (stack.length) errors.push("bloco não fechado: " + stack[stack.length - 1]);
-  const delimiters: string[] = [];
-  const pair: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
-  for (const char of masked) {
-    if (["(", "[", "{"].includes(char)) delimiters.push(char);
-    if ([")", "]", "}"].includes(char)) {
-      if (delimiters.pop() !== pair[char]) { errors.push("parênteses ou delimitadores incompatíveis"); break; }
-    }
-  }
-  if (delimiters.length) errors.push("delimitador não fechado");
-  if (/\/\s*0+(?:\.0*)?(?![\d.])/.test(masked)) warnings.push("possível divisão por literal zero");
-  const channels = [...masked.matchAll(/\b(?:input\.(?:getNumber|getBool)|output\.setNumber|output\.setBool)\s*\(\s*(-?\d+)/gi)];
-  if (channels.some((match) => Number(match[1]) < 1 || Number(match[1]) > 32)) warnings.push("canal fora da faixa 1–32; confira a numeração");
-  if (!/\bfunction\s+onTick\s*\(/.test(masked) && !/\bfunction\s+onDraw\s*\(/.test(masked)) warnings.push("callback onTick() ou onDraw() não identificado");
-  return { errors, warnings };
+
+type EffortLevel = "low" | "medium" | "ultra";
+type WorkMode = "general" | "stormworks" | "image" | "personality";
+
+function isEffortLevel(value: unknown): value is EffortLevel {
+  return value === "low" || value === "medium" || value === "ultra";
 }
-async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>) {
-  const key = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
-  if (!key) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY para a geração de Lua.");
-  const context = messages.map((m) => ({ role: m.role, content: m.content }));
-  const answer = await openAI(GROQ, key, STORM_MODEL, [{ role: "system", content: STORM_PROMPT }, ...context], 0.12);
+
+function resolveMode(prompt: string): WorkMode {
+  if (/stormworks|microcontrolador|micro\s*controlador|\bonTick\b|\bonDraw\b|lua\s+vanilla/i.test(prompt)) return "stormworks";
+  if (/(?:gere|gerar|crie|criar|desenhe|desenhar)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital/i.test(prompt)) return "image";
+  if (/modo personalidade|personalidade|interprete|finja\s+ser|aja\s+como|roleplay|converse\s+como|estilo\s+de\s+fala/i.test(prompt)) return "personality";
+  return "general";
+}
+
+function isCodeRequest(prompt: string): boolean {
+  if (/\x60{3}/.test(prompt)) return true;
+
+  const action = /\b(?:crie|criar|gere|gerar|escreva|escrever|implemente|implementar|desenvolva|desenvolver|construa|construir|programe|programar|codifique|codificar|fa[cç]a|fazer|faz|monte|montar|mande|mandar|manda|passa|mostrar|mostra|mostre|quero|preciso|necessito)\b/i;
+  const artifact = /\b(?:c[oó]digo|script|programa|programa[cç][aã]o|fun[cç][aã]o|classe|componente|aplica[cç][aã]o|aplicativo|app|site|website|p[aá]gina|api|endpoint|bot|microcontrolador|lua|python|typescript|javascript|html|css|sql|stormworks|roblox|plugin|extens[aã]o|macro|jogo)\b/i;
+  if (action.test(prompt) && artifact.test(prompt)) return true;
+
+  const repair = /\b(?:corrija|corrigir|conserte|consertar|depure|debugue|refatore|refatorar|otimize|otimizar|edite|editar|modifique|modificar|revise|revisar)\b/i;
+  const technicalReference = /\b(?:c[oó]digo|script|programa|fun[cç][aã]o|arquivo|bug|erro|api|componente|lua|python|typescript|javascript|html|css|sql)\b/i;
+  return repair.test(prompt) && technicalReference.test(prompt);
+}
+
+function luaIssues(answer: string): string[] {
   const blocks = luaBlocks(answer);
-  if (!blocks.length) throw new Error("A resposta não trouxe um bloco Markdown Lua. Peça explicitamente o código completo.");
-  const reports = blocks.map((code, index) => ({ index: index + 1, ...analyzeLua(code) }));
-  const errors = reports.flatMap((report) => report.errors.map((item) => `bloco ${report.index}: ${item}`));
-  const warnings = reports.flatMap((report) => report.warnings.map((item) => `bloco ${report.index}: ${item}`));
-  if (errors.length) throw new Error("A análise local encontrou problemas que impedem entregar o código: " + errors.join("; ") + ". Peça uma versão corrigida e mais simples.");
-  const reportText = warnings.length
-    ? "\n\n**Análise estática local (sem Gemini):**\n" + warnings.map((item) => "- " + item).join("\n")
-    : "\n\n**Análise estática local (sem Gemini):** sem problemas estruturais básicos detectados.";
-  return answer + reportText + "\n\n_A análise não executa o código no Stormworks e não garante que todas as APIs ou a lógica estejam corretas. Teste na montagem real._";
+  const issues: string[] = [];
+  if (!blocks.length) return ["A resposta não contém um bloco Markdown Lua completo."];
+  blocks.forEach((code, index) => {
+    if (Array.from(code).length > 4096) issues.push("Bloco " + (index + 1) + " excede 4.096 caracteres.");
+    if (/\b(?:os|io)\s*[.:]|\b(?:package|debug)\s*[.:]|\b(?:require|dofile|loadfile)\s*\(/i.test(code)) {
+      issues.push("Bloco " + (index + 1) + " contém uma API bloqueada para o ambiente vanilla.");
+    }
+    if (!/\bfunction\s+(?:onTick|onDraw)\s*\(/i.test(code)) {
+      issues.push("Bloco " + (index + 1) + " não apresenta onTick() nem onDraw().");
+    }
+  });
+  return issues;
 }
-async function image(prompt: string) {
+
+async function reviewAndImprove(
+  url: string,
+  key: string,
+  model: string,
+  systemPrompt: string,
+  messages: Array<{role:"user"|"assistant";content:string}>,
+  initialAnswer: string,
+  effort: EffortLevel,
+  headers: Record<string, string> = {},
+  kind: "code" | "stormworks" | "personality" = "code",
+) {
+  const request = messages.filter((message) => message.role === "user").slice(-12)
+    .map((message, index) => "Pedido " + (index + 1) + ":\n" + message.content).join("\n\n");
+  const packageText = "PEDIDOS DO USUÁRIO:\n" + request + "\n\nRESPOSTA INICIAL:\n" + initialAnswer;
+  const checks = kind === "personality"
+    ? "Verifique consistência de voz, aderência ao papel pedido, clareza, contexto e ausência de afirmações inventadas."
+    : "Faça auditoria de lógica, requisitos, casos extremos, segurança, tratamento de erros e compatibilidade. Simule mentalmente os casos de teste apropriados; NÃO afirme que executou o código.";
+  const count = effort === "low" ? "2 cenários essenciais" : effort === "medium" ? "4 cenários representativos" : "8 cenários, incluindo limites, falhas e segurança";
+  let finalAnswer = initialAnswer;
+
+  if (effort === "low") {
+    finalAnswer = await openAI(url, key, model, [
+      { role: "system", content: systemPrompt + "\n\nVocê também é revisor técnico. Faça uma revisão rápida e corrija os problemas encontrados em uma única rodada. " + checks + " Considere " + count + ". Devolva a resposta final COMPLETA, não um diff. Preserve todos os requisitos originais. Não diga que executou testes." },
+      { role: "user", content: packageText },
+    ], 0.1, headers);
+  } else {
+    const review = await openAI(url, key, model, [
+      { role: "system", content: "Você é um revisor técnico em uma etapa separada e criterioso. " + checks + " Liste falhas concretas, riscos, requisitos esquecidos e " + count + " casos de teste simulados. Não reescreva o projeto e não declare testes executados." },
+      { role: "user", content: packageText },
+    ], 0.05, headers);
+    finalAnswer = await openAI(url, key, model, [
+      { role: "system", content: systemPrompt + "\n\nAplique a revisão técnica a seguir. Corrija todos os problemas justificáveis, confira a resposta requisito por requisito e faça a simulação lógica dos casos de teste. Devolva a resposta COMPLETA e pronta para uso; nunca apenas trechos ou diff. Não afirme execução real de testes." },
+      { role: "user", content: packageText + "\n\nRELATÓRIO DA REVISÃO:\n" + review },
+    ], 0.1, headers);
+
+    if (effort === "ultra") {
+      finalAnswer = await openAI(url, key, model, [
+        { role: "system", content: systemPrompt + "\n\nFaça uma terceira rodada: auditoria final independente da solução revisada. Procure regressões, inconsistências, problemas de segurança, limites e falhas nos cenários de teste. Corrija o que encontrar e entregue novamente a resposta completa, sem diff. Diferencie claramente simulação lógica de execução real." },
+        { role: "user", content: "PEDIDO ORIGINAL:\n" + request + "\n\nRESPOSTA REVISADA:\n" + finalAnswer },
+      ], 0.05, headers);
+    }
+  }
+
+  const effortLabel = effort === "low" ? "Baixo (1 rodada de revisão)" : effort === "medium" ? "Médio (auditoria separada + correção)" : "Ultra (3 rodadas de revisão e verificação)";
+  const checkLabel = kind === "personality"
+    ? "consistência e aderência ao contexto revisadas por IA"
+    : "casos de teste simulados por análise lógica, sem execução local";
+  return finalAnswer + "\n\n_Revisão assistida por IA: esforço " + effortLabel + "; " + checkLabel + ".";
+}
+
+async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>, effort: EffortLevel) {
+  const key = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
+  if (!key) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY no servidor.");
+  const context = messages.map((m) => ({ role: m.role, content: m.content }));
+  let answer = await openAI(GROQ, key, STORM_MODEL, [{ role: "system", content: STORM_PROMPT }, ...context], 0.12);
+  answer = await reviewAndImprove(GROQ, key, STORM_MODEL, STORM_PROMPT, messages, answer, effort, {}, "stormworks");
+  let issues = luaIssues(answer);
+  if (issues.length) {
+    answer = await openAI(GROQ, key, STORM_MODEL, [
+      { role: "system", content: STORM_PROMPT + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
+      { role: "user", content: "PEDIDO ORIGINAL:\n" + messages[messages.length - 1].content + "\n\nRESPOSTA A CORRIGIR:\n" + answer + "\n\nPROBLEMAS:\n" + issues.join("\n") },
+    ], 0.05);
+    issues = luaIssues(answer);
+  }
+  if (issues.length) throw new Error("A verificação estática do Stormworks ainda encontrou problemas: " + issues.join(" "));
+  return answer + "\n\n_Análise estática Lua aprovada: limite de 4.096 caracteres por bloco, APIs bloqueadas e callback onTick/onDraw verificados. A execução real ainda deve ser conferida dentro do Stormworks._";
+}
+
+async function image(messages: Array<{role:"user"|"assistant";content:string}>) {
   const key = Deno.env.get("POLLINATIONS_API_KEY");
-  if (!key) throw new Error("Falta POLLINATIONS_API_KEY (Pollinations).");
-  const res = await fetch("https://gen.pollinations.ai/v1/images/generations", { method: "POST", headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, size: "1024x1024", response_format: "url" }) });
+  if (!key) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
+  const latest = messages[messages.length - 1]?.content ?? "";
+  const context = messages.slice(-8, -1)
+    .map((m) => (m.role === "user" ? "Pedido anterior: " : "Contexto anterior: ") + m.content)
+    .join("\n");
+  const prompt = context
+    ? "Use o contexto visual abaixo para manter continuidade entre pedidos. Priorize a instrução mais recente.\n\nCONTEXTO:\n" + context + "\n\nPEDIDO ATUAL:\n" + latest
+    : latest;
+  const res = await fetch("https://gen.pollinations.ai/v1/images/generations", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, size: "1024x1024", response_format: "url" }),
+  });
   const raw = await res.text();
   let data: any = {};
   try { data = JSON.parse(raw); } catch {}
   if (!res.ok) throw new Error("Pollinations HTTP " + res.status + ": " + errText(data.error ?? raw.slice(0, 350)));
   const url = data?.data?.[0]?.url;
-  if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou URL pública. Confira saldo e permissões.");
+  if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou uma URL pública válida.");
   return url;
 }
 
@@ -124,30 +192,61 @@ Deno.serve(async (req: Request) => {
     await authorize(req);
     const body = await req.json().catch(() => null);
     if (!body || !Array.isArray(body.messages)) return json({ error: "Envie messages[]." }, 400);
-    const mode = body.mode;
-    if (!["general", "stormworks", "image", "personality"].includes(mode)) return json({ error: "Modo inválido." }, 400);
+    const requestedMode = body.mode;
+    if (!["auto", "general", "stormworks", "image", "personality"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
     const messages: Array<{role:"user"|"assistant";content:string}> = [];
     let total = 0;
-    for (const item of body.messages.slice(-24)) {
+    for (const item of body.messages.slice(-40)) {
       if ((item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") continue;
       const content = item.content.slice(0, 16000);
       total += content.length;
-      if (total > 60000) return json({ error: "Histórico muito longo. Inicie conversa nova." }, 413);
+      if (total > 90000) return json({ error: "Histórico muito longo. Inicie conversa nova." }, 413);
       messages.push({ role: item.role, content });
     }
     if (!messages.length || messages[messages.length - 1].role !== "user") return json({ error: "A última mensagem deve ser do usuário." }, 400);
-    if (mode === "image") return json({ image_url: await image(messages[messages.length - 1].content), model: IMAGE_MODEL });
-    if (mode === "stormworks") return json({ answer: await stormworks(messages), model: STORM_MODEL, validator: "lua-static-v1" });
+
+    const mode: WorkMode = requestedMode === "auto" ? resolveMode(messages[messages.length - 1].content) : requestedMode;
+    const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
+    const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
+
+    if (mode === "image") return json({ image_url: await image(messages), model: IMAGE_MODEL, selected_mode: mode, effort: "n/a" });
+    if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
-      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: PERSONALITY_PROMPT }, ...messages], 0.8, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" });
-      return json({ answer, model: PERSONA_MODEL });
+      const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
+      const initial = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: PERSONALITY_PROMPT }, ...messages], 0.8, headers);
+      const answer = await reviewAndImprove(OPENROUTER, key, PERSONA_MODEL, PERSONALITY_PROMPT, messages, initial, effort, headers, "personality");
+      return json({ answer, model: PERSONA_MODEL, selected_mode: mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
     if (!codeKey) return json({ error: "Falta CODE_API_KEY (Groq)." }, 503);
-    const answer = await openAI(GROQ, codeKey, CODE_MODEL, [{ role: "system", content: GENERAL_PROMPT }, ...messages], 0.2);
-    return json({ answer, model: CODE_MODEL });
+
+    const latestPrompt = messages[messages.length - 1].content;
+    const wantsCode = isCodeRequest(latestPrompt);
+    const systemPrompt = wantsCode ? CODE_PROMPT : CHAT_PROMPT;
+    const initial = await openAI(
+      GROQ,
+      codeKey,
+      CODE_MODEL,
+      [{ role: "system", content: systemPrompt }, ...messages],
+      wantsCode ? 0.2 : 0.65,
+      {},
+      wantsCode ? 8192 : 1100,
+    );
+
+    if (!wantsCode) {
+      return json({
+        answer: initial,
+        model: CODE_MODEL,
+        selected_mode: mode,
+        answer_kind: "conversation",
+        effort: "n/a",
+      });
+    }
+
+    const answer = await reviewAndImprove(GROQ, codeKey, CODE_MODEL, CODE_PROMPT, messages, initial, effort);
+    return json({ answer, model: CODE_MODEL, selected_mode: mode, answer_kind: "code", effort });
   } catch (error) {
     const message = errText(error);
     const status = /sessão ausente|sessão inválida/i.test(message) ? 401 : /acesso negado/i.test(message) ? 403 : /Falta .*API_KEY/i.test(message) ? 503 : 502;
