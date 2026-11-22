@@ -87,7 +87,7 @@ function getWelcomeCopy(user: User | null, date: Date) {
   const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const configuredName = [metadata.full_name, metadata.name, metadata.display_name, metadata.username]
     .find((value) => typeof value === 'string' && value.trim().length > 0);
-  const fallbackName = user?.email?.toLowerCase() === ALLOWED_EMAIL ? 'Loren' : ALLOWED_USERNAME;
+  const fallbackName = user?.email?.toLowerCase() === ALLOWED_EMAIL ? 'Lorenzo' : ALLOWED_USERNAME;
   const rawName = typeof configuredName === 'string' ? configuredName : fallbackName;
   const name = rawName.trim().split(/\s+/)[0] || 'amigo';
 
