@@ -1,4 +1,4 @@
-name: Build AI Workbench for Android and Zorin
+name: Build AI Workbench packages
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ai-workbench-packages-build
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - name: Checkout source
@@ -39,6 +39,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+
+      - name: Install Linux packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rpm libfuse2 curl desktop-file-utils
 
       - name: Build web application
         working-directory: app
@@ -64,29 +69,33 @@ jobs:
         working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Package Zorin OS installer
-        working-directory: app
+      - name: Prepare shared Linux application files
         run: |
-          set -e
-          ROOT="$RUNNER_TEMP/ai-workbench-deb"
-          mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/ai-workbench/site" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
-          cp -a dist/. "$ROOT/opt/ai-workbench/site/"
-          install -m 0644 public/icons/icon-512.png "$ROOT/usr/share/icons/hicolor/512x512/apps/ai-workbench.png"
-          cat > "$ROOT/DEBIAN/control" <<'CONTROL'
-          Package: ai-workbench
-          Version: 1.0.0
-          Section: devel
-          Priority: optional
-          Architecture: all
-          Depends: python3, xdg-utils
-          Maintainer: AI Workbench
-          Description: AI Workbench - aplicativo privado de assistencia e codigo
-           Interface local para abrir o AI Workbench no navegador padrao.
-          CONTROL
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/ai-workbench-root"
+          mkdir -p "$ROOT/opt/ai-workbench/site" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+          cp -a app/dist/. "$ROOT/opt/ai-workbench/site/"
+          install -m 0644 app/public/icons/icon-512.png "$ROOT/usr/share/icons/hicolor/512x512/apps/ai-workbench.png"
           cat > "$ROOT/usr/bin/ai-workbench" <<'LAUNCHER'
           #!/usr/bin/env bash
           set -euo pipefail
-          APP_DIR="/opt/ai-workbench/site"
+          SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+          APP_DIR="${AI_WORKBENCH_SITE_DIR:-}"
+          if [[ -z "$APP_DIR" ]]; then
+            if [[ -d "$SCRIPT_DIR/site" ]]; then APP_DIR="$SCRIPT_DIR/site"; else APP_DIR="/opt/ai-workbench/site"; fi
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "AI Workbench precisa do Python 3 para iniciar o servidor local." >&2
+            exit 1
+          fi
+          if ! command -v xdg-open >/dev/null 2>&1; then
+            echo "Instale xdg-utils para abrir o AI Workbench no navegador." >&2
+            exit 1
+          fi
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "Arquivos do AI Workbench não encontrados: $APP_DIR" >&2
+            exit 1
+          fi
           STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-workbench"
           mkdir -p "$STATE_DIR"
           PID_FILE="$STATE_DIR/server.pid"
@@ -95,9 +104,7 @@ jobs:
           if [[ -f "$PID_FILE" && -f "$PORT_FILE" ]]; then
             PID="$(cat "$PID_FILE" 2>/dev/null || true)"
             SAVED_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
-            if [[ -n "$PID" && -n "$SAVED_PORT" ]] && kill -0 "$PID" 2>/dev/null; then
-              PORT="$SAVED_PORT"
-            fi
+            if [[ -n "$PID" && -n "$SAVED_PORT" ]] && kill -0 "$PID" 2>/dev/null; then PORT="$SAVED_PORT"; fi
           fi
           if [[ -z "$PORT" ]]; then
             PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
@@ -107,7 +114,7 @@ jobs:
             sleep 1
             if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
               rm -f "$PID_FILE" "$PORT_FILE"
-              notify-send "AI Workbench" "Nao foi possivel iniciar o servidor local." 2>/dev/null || true
+              echo "Não foi possível iniciar o servidor local." >&2
               exit 1
             fi
           fi
@@ -118,7 +125,7 @@ jobs:
           [Desktop Entry]
           Type=Application
           Name=AI Workbench
-          Comment=Seu espaco privado de IA e programacao
+          Comment=Ambiente de criação e programação
           Exec=ai-workbench
           Icon=ai-workbench
           Terminal=false
@@ -126,14 +133,141 @@ jobs:
           StartupNotify=true
           DESKTOP
           chmod 0644 "$ROOT/usr/share/applications/ai-workbench.desktop"
-          dpkg-deb --root-owner-group --build "$ROOT" "$RUNNER_TEMP/ai-workbench-zorin.deb"
+          desktop-file-validate "$ROOT/usr/share/applications/ai-workbench.desktop"
 
-      - name: Collect Android APK and Zorin installer
+      - name: Build Ubuntu Debian Zorin package
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/ai-workbench-root"
+          DEBROOT="$RUNNER_TEMP/ai-workbench-deb"
+          mkdir -p "$DEBROOT/DEBIAN"
+          cp -a "$ROOT/." "$DEBROOT/"
+          cat > "$DEBROOT/DEBIAN/control" <<'CONTROL'
+          Package: ai-workbench
+          Version: 1.0.0
+          Section: devel
+          Priority: optional
+          Architecture: all
+          Depends: python3, xdg-utils
+          Maintainer: AI Workbench
+          Description: AI Workbench - ambiente de criação e programação
+           Aplicativo web empacotado para desktop Linux.
+          CONTROL
+          dpkg-deb --root-owner-group --build "$DEBROOT" "$RUNNER_TEMP/AI-Workbench-Ubuntu-Debian.deb"
+
+      - name: Build Fedora openSUSE RPM package
+        run: |
+          set -euo pipefail
+          TOP="$RUNNER_TEMP/rpmbuild"
+          mkdir -p "$TOP/BUILD" "$TOP/RPMS" "$TOP/SOURCES" "$TOP/SPECS" "$TOP/SRPMS"
+          tar -czf "$TOP/SOURCES/ai-workbench-root.tar.gz" -C "$RUNNER_TEMP/ai-workbench-root" .
+          cat > "$TOP/SPECS/ai-workbench.spec" <<'SPEC'
+          Name: ai-workbench
+          Version: 1.0.0
+          Release: 1
+          Summary: AI Workbench - ambiente de criação e programação
+          License: Proprietary
+          BuildArch: noarch
+          Requires: python3
+          Requires: xdg-utils
+          Source0: ai-workbench-root.tar.gz
+
+          %description
+          Aplicativo de criação e programação para desktop Linux.
+
+          %prep
+          %setup -q -c -T
+
+          %install
+          mkdir -p %{buildroot}
+          tar -xzf %{SOURCE0} -C %{buildroot}
+
+          %files
+          %defattr(-,root,root,-)
+          /opt/ai-workbench/site
+          /usr/bin/ai-workbench
+          /usr/share/applications/ai-workbench.desktop
+          /usr/share/icons/hicolor/512x512/apps/ai-workbench.png
+          SPEC
+          rpmbuild --define "_topdir $TOP" -bb "$TOP/SPECS/ai-workbench.spec"
+          cp "$TOP/RPMS/noarch/ai-workbench-1.0.0-1.noarch.rpm" "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm"
+
+      - name: Build universal Linux AppImage
+        run: |
+          set -euo pipefail
+          APPDIR="$RUNNER_TEMP/AI-Workbench.AppDir"
+          OUT="$RUNNER_TEMP/AI-Workbench-Linux-x86_64.AppImage"
+          mkdir -p "$APPDIR"
+          cp -a "$RUNNER_TEMP/ai-workbench-root/." "$APPDIR/"
+          install -m 0644 "$APPDIR/usr/share/applications/ai-workbench.desktop" "$APPDIR/ai-workbench.desktop"
+          install -m 0644 "$APPDIR/usr/share/icons/hicolor/512x512/apps/ai-workbench.png" "$APPDIR/ai-workbench.png"
+          cat > "$APPDIR/AppRun" <<'APPRUN'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+          export AI_WORKBENCH_SITE_DIR="$HERE/opt/ai-workbench/site"
+          exec "$HERE/usr/bin/ai-workbench" "$@"
+          APPRUN
+          chmod 0755 "$APPDIR/AppRun"
+          curl -fsSL --retry 3 "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage" -o "$RUNNER_TEMP/appimagetool"
+          curl -fsSL --retry 3 "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64" -o "$RUNNER_TEMP/appimage-runtime"
+          chmod 0755 "$RUNNER_TEMP/appimagetool" "$RUNNER_TEMP/appimage-runtime"
+          ARCH=x86_64 APPIMAGETOOL_RUNTIME_FILE="$RUNNER_TEMP/appimage-runtime" "$RUNNER_TEMP/appimagetool" "$APPDIR" "$OUT"
+          chmod 0755 "$OUT"
+
+      - name: Build portable Linux TAR.GZ
+        run: |
+          set -euo pipefail
+          PORTABLE="$RUNNER_TEMP/ai-workbench-portable"
+          mkdir -p "$PORTABLE/site"
+          cp -a app/dist/. "$PORTABLE/site/"
+          cp "$RUNNER_TEMP/ai-workbench-root/usr/bin/ai-workbench" "$PORTABLE/start-ai-workbench"
+          chmod 0755 "$PORTABLE/start-ai-workbench"
+          cat > "$PORTABLE/LEIA-ME.txt" <<'INFO'
+          AI Workbench - Linux portátil
+
+          Requisitos: Python 3, xdg-utils e um navegador.
+          Extraia o arquivo e execute ./start-ai-workbench.
+          O aplicativo abre no navegador padrão e precisa de internet para recursos online.
+          INFO
+          tar -czf "$RUNNER_TEMP/AI-Workbench-Linux-Portable.tar.gz" -C "$RUNNER_TEMP" ai-workbench-portable
+
+      - name: Collect packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/package-output"
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/package-output/AI-Workbench-Android.apk"
+          cp "$RUNNER_TEMP/AI-Workbench-Ubuntu-Debian.deb" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Linux-x86_64.AppImage" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Linux-Portable.tar.gz" "$RUNNER_TEMP/package-output/"
+          ls -lh "$RUNNER_TEMP/package-output"
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ai-workbench-android-and-zorin
-          path: |
-            app/android/app/build/outputs/apk/debug/app-debug.apk
-            ${{ runner.temp }}/ai-workbench-zorin.deb
+          name: ai-workbench-android-linux
+          path: ${{ runner.temp }}/package-output/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish latest downloadable packages
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: AI Workbench — Downloads
+          target_commitish: main
+          body: |
+            Downloads oficiais do AI Workbench.
+
+            Linux x86_64: AppImage, DEB (Ubuntu/Debian/Zorin), RPM (Fedora/openSUSE) e TAR.GZ portátil.
+            Android: APK para instalação manual.
+          files: |
+            ${{ runner.temp }}/package-output/AI-Workbench-Android.apk
+            ${{ runner.temp }}/package-output/AI-Workbench-Linux-x86_64.AppImage
+            ${{ runner.temp }}/package-output/AI-Workbench-Ubuntu-Debian.deb
+            ${{ runner.temp }}/package-output/AI-Workbench-Fedora-openSUSE.rpm
+            ${{ runner.temp }}/package-output/AI-Workbench-Linux-Portable.tar.gz
+          overwrite_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
