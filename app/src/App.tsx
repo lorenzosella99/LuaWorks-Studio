@@ -410,9 +410,10 @@ export default function App() {
 
   // Mantém a barra lateral e a conversa aberta sincronizadas entre dispositivos.
   useEffect(() => {
-    if (!supabase || !session?.user?.id) return;
+    const client = supabase;
+    if (!client || !session?.user?.id) return;
     const userId = session.user.id;
-    const channel = supabase
+    const channel = client
       .channel(`workbench-sync-${userId}`)
       .on(
         'postgres_changes',
@@ -461,7 +462,7 @@ export default function App() {
       });
 
     return () => {
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, [activeId, session?.user?.id]);
 
