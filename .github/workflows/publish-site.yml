@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ai-workbench-pages-publish
+  cancel-in-progress: true
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -49,5 +53,7 @@ jobs:
             echo "The published website is already up to date."
           else
             git commit -m "Publish AI Workbench web app"
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
