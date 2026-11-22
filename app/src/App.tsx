@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type { Session, User } from '@supabase/supabase-js';
 import type { CSSProperties } from 'react';
 import {
-  ArrowDown, ArrowUp, Bot, Check, ChevronDown, Code2, Github, Image as ImageIcon,
-  LogOut, Menu, MessageSquare, MessageCircleHeart, Plus, Settings2, SlidersHorizontal, Sparkles, Trash2, X, Zap, Wrench,
+  ArrowDown, ArrowUp, Bot, Check, ChevronDown, Code2, Download, Github, Image as ImageIcon,
+  LogOut, Menu, MessageSquare, MessageCircleHeart, Monitor, Package, Plus, Settings2, SlidersHorizontal, Smartphone, Sparkles, Trash2, X, Zap, Wrench,
 } from 'lucide-react';
 import MarkdownMessage from './components/MarkdownMessage';
 import LuaValidator from './components/LuaValidator';
@@ -81,6 +81,96 @@ function readableAccentInk(hex: string) {
 
 function isAllowedAccount(user: User | null | undefined) {
   return Boolean(user && user.email?.trim().toLowerCase() === ALLOWED_EMAIL);
+}
+
+function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings; onSave: (next: AppearanceSettings) => void }) {
+  const [pageWidth, setPageWidth] = useState<AppearanceSettings['pageWidth']>(value.pageWidth);
+  const [preview, setPreview] = useState<{ primaryColor: string; secondaryColor: string } | null>(null);
+  const primaryInputRef = useRef<HTMLInputElement>(null);
+  const secondaryInputRef = useRef<HTMLInputElement>(null);
+  const primaryHexRef = useRef<HTMLOutputElement>(null);
+  const secondaryHexRef = useRef<HTMLOutputElement>(null);
+
+  const currentColors = () => ({
+    primaryColor: primaryInputRef.current?.value.toUpperCase() ?? value.primaryColor,
+    secondaryColor: secondaryInputRef.current?.value.toUpperCase() ?? value.secondaryColor,
+  });
+  const updateHex = (input: HTMLInputElement, output: HTMLOutputElement | null) => {
+    if (output) output.textContent = input.value.toUpperCase();
+  };
+  const resetDraft = () => {
+    setPageWidth(DEFAULT_APPEARANCE.pageWidth);
+    if (primaryInputRef.current) primaryInputRef.current.value = DEFAULT_APPEARANCE.primaryColor;
+    if (secondaryInputRef.current) secondaryInputRef.current.value = DEFAULT_APPEARANCE.secondaryColor;
+    if (primaryInputRef.current) updateHex(primaryInputRef.current, primaryHexRef.current);
+    if (secondaryInputRef.current) updateHex(secondaryInputRef.current, secondaryHexRef.current);
+    setPreview(null);
+  };
+  const showPreview = () => setPreview(currentColors());
+  const saveDraft = () => onSave({ pageWidth, ...currentColors() });
+
+  return (
+    <div className="settings-section appearance-section">
+      <div className="settings-section-title"><Sparkles size={17} /> Aparência</div>
+      <p>Personalize a largura e as cores. Os ajustes ficam em rascunho até você salvar.</p>
+      <div className="appearance-control-group">
+        <div className="appearance-control-heading"><strong>Tamanho da página</strong><span>largura do conteúdo</span></div>
+        <div className="appearance-width-options" role="group" aria-label="Largura da página">
+          {([
+            ['compact', 'Compacto'],
+            ['standard', 'Padrão'],
+            ['wide', 'Amplo'],
+            ['full', 'Total'],
+          ] as const).map(([width, label]) => (
+            <button key={width} type="button" className={'appearance-width-option' + (pageWidth === width ? ' appearance-width-option--active' : '')} aria-pressed={pageWidth === width} onClick={() => setPageWidth(width)}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="appearance-control-group">
+        <div className="appearance-control-heading"><strong>Paleta de cores</strong><span>prévia antes de salvar</span></div>
+        <div className="appearance-color-grid">
+          <label className="appearance-color-control">
+            <span>Cor primária</span>
+            <div className="appearance-color-input">
+              <input ref={primaryInputRef} type="color" defaultValue={value.primaryColor} onInput={(event) => updateHex(event.currentTarget, primaryHexRef.current)} aria-label="Escolher cor primária" />
+              <output ref={primaryHexRef}>{value.primaryColor}</output>
+            </div>
+          </label>
+          <label className="appearance-color-control">
+            <span>Cor secundária</span>
+            <div className="appearance-color-input">
+              <input ref={secondaryInputRef} type="color" defaultValue={value.secondaryColor} onInput={(event) => updateHex(event.currentTarget, secondaryHexRef.current)} aria-label="Escolher cor secundária" />
+              <output ref={secondaryHexRef}>{value.secondaryColor}</output>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div className="appearance-preview-actions">
+        <button className="secondary-button" type="button" onClick={showPreview}><Sparkles size={13} /> {preview ? 'Atualizar prévia' : 'Prévia rápida'}</button>
+        <span>Não altera o restante da tela</span>
+      </div>
+      {preview && (
+        <div className="appearance-preview-wrap">
+          <div className="appearance-preview" style={{
+            '--accent': preview.primaryColor,
+            '--accent-ink': readableAccentInk(preview.primaryColor),
+            '--secondary': preview.secondaryColor,
+            background: `linear-gradient(118deg, ${preview.primaryColor} 0%, color-mix(in srgb, ${preview.primaryColor} 48%, ${preview.secondaryColor}) 52%, ${preview.secondaryColor} 100%)`,
+          } as CSSProperties}>
+            <div className="appearance-preview-content">
+              <span className="appearance-preview-mark"><Sparkles size={14} /></span>
+              <strong>AI Workbench</strong>
+              <small>Primária + secundária</small>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="appearance-save-actions">
+        <button className="appearance-reset" type="button" onClick={resetDraft}>Restaurar padrão</button>
+        <button className="primary-button" type="button" onClick={saveDraft}><Check size={14} /> Salvar aparência</button>
+      </div>
+    </div>
+  );
 }
 
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
@@ -906,66 +996,34 @@ export default function App() {
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
-            <div className="settings-section appearance-section">
-              <div className="settings-section-title"><Sparkles size={17} /> Aparência</div>
-              <p>Personalize a largura da página e as cores principais do Workbench. As alterações são aplicadas imediatamente e ficam salvas neste dispositivo.</p>
+            <AppearanceSettingsPanel value={appearance} onSave={(next) => { setAppearance(next); showToast('Aparência salva.'); }} />
 
-              <div className="appearance-control-group">
-                <div className="appearance-control-heading"><strong>Tamanho da página</strong><span>largura do conteúdo</span></div>
-                <div className="appearance-width-options" role="group" aria-label="Largura da página">
-                  {([
-                    ['compact', 'Compacto'],
-                    ['standard', 'Padrão'],
-                    ['wide', 'Amplo'],
-                    ['full', 'Total'],
-                  ] as const).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={'appearance-width-option' + (appearance.pageWidth === value ? ' appearance-width-option--active' : '')}
-                      aria-pressed={appearance.pageWidth === value}
-                      onClick={() => setAppearance((current) => ({ ...current, pageWidth: value }))}
-                    >{label}</button>
-                  ))}
-                </div>
+            <div className="settings-section downloads-section">
+              <div className="settings-section-title"><Download size={17} /> Downloads</div>
+              <p>Instale o AI Workbench no seu dispositivo. No Linux, escolha o formato recomendado para sua distribuição.</p>
+              <div className="download-options">
+                <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Android.apk">
+                  <span className="download-option-icon"><Smartphone size={17} /></span>
+                  <span><strong>Android · APK</strong><small>Instalação em celulares e tablets Android</small></span><Download size={15} />
+                </a>
+                <a className="download-option download-option--recommended" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Linux-x86_64.AppImage">
+                  <span className="download-option-icon"><Monitor size={17} /></span>
+                  <span><strong>Linux · AppImage</strong><small>Ubuntu GNOME, Fedora, Zorin, Debian e outras distribuições x86_64</small></span><Download size={15} />
+                </a>
+                <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Ubuntu-Debian.deb">
+                  <span className="download-option-icon"><Package size={17} /></span>
+                  <span><strong>Linux · DEB</strong><small>Ubuntu, Debian, Zorin OS e derivados</small></span><Download size={15} />
+                </a>
+                <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Fedora-openSUSE.rpm">
+                  <span className="download-option-icon"><Package size={17} /></span>
+                  <span><strong>Linux · RPM</strong><small>Fedora, openSUSE e distribuições compatíveis</small></span><Download size={15} />
+                </a>
+                <a className="download-option" href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest/download/AI-Workbench-Linux-Portable.tar.gz">
+                  <span className="download-option-icon"><Download size={17} /></span>
+                  <span><strong>Linux · Portátil TAR.GZ</strong><small>Para instalação manual em outros ambientes Linux</small></span><Download size={15} />
+                </a>
               </div>
-
-              <div className="appearance-control-group">
-                <div className="appearance-control-heading"><strong>Paleta de cores</strong><span>escolha livre</span></div>
-                <div className="appearance-color-grid">
-                  <label className="appearance-color-control">
-                    <span>Cor primária</span>
-                    <div className="appearance-color-input">
-                      <input type="color" value={appearance.primaryColor} onChange={(event) => setAppearance((current) => ({ ...current, primaryColor: event.target.value.toUpperCase() }))} aria-label="Escolher cor primária" />
-                      <code>{appearance.primaryColor}</code>
-                    </div>
-                  </label>
-                  <label className="appearance-color-control">
-                    <span>Cor secundária</span>
-                    <div className="appearance-color-input">
-                      <input type="color" value={appearance.secondaryColor} onChange={(event) => setAppearance((current) => ({ ...current, secondaryColor: event.target.value.toUpperCase() }))} aria-label="Escolher cor secundária" />
-                      <code>{appearance.secondaryColor}</code>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              <div className="appearance-preview-wrap">
-                <div className="appearance-control-heading"><strong>Prévia da mistura</strong><span>dispersão suave</span></div>
-                <div className="appearance-preview">
-                  <span className="appearance-preview-orb appearance-preview-orb--one" />
-                  <span className="appearance-preview-orb appearance-preview-orb--two" />
-                  <div className="appearance-preview-content">
-                    <span className="appearance-preview-mark"><Sparkles size={14} /></span>
-                    <strong>AI Workbench</strong>
-                    <small>Primária + secundária</small>
-                  </div>
-                </div>
-              </div>
-
-              <button className="appearance-reset" type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)}>
-                Restaurar aparência padrão
-              </button>
+              <p className="download-footnote">Os pacotes Linux são para computadores x86_64. O AppImage é a opção mais simples para a maioria dos desktops.</p>
             </div>
             <div className="settings-section">
               <div className="settings-section-title"><Zap size={17} /> Diagnóstico das APIs</div>
