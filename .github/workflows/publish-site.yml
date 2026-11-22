@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'source.part0*'
       - 'app/**'
       - '.github/workflows/publish-site.yml'
   workflow_dispatch:
@@ -19,30 +18,11 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Reassemble source
+      - name: Verify tracked application source
         run: |
-          cat source.part00 source.part01 source.part02 source.part03 source.part04 source.part05 source.part06 > source.tar.xz.b64
-          base64 --decode source.tar.xz.b64 | tar -xJf -
-          test -f ai-workbench/package.json
-          test ! -e ai-workbench/.env
-          python3 - <<'PY'
-          from pathlib import Path
-          app = Path("ai-workbench/src/App.tsx")
-          source = app.read_text()
-          start = source.index("  useEffect(() => {\n    if (!supabase) {")
-          end = source.index("\n  }, []);", start) + len("\n  }, []);")
-          block = source[start:end]
-          block = block.replace("  useEffect(() => {\n    if (!supabase) {", "  useEffect(() => {\n    const client = supabase;\n    if (!client) {", 1)
-          block = block.replace("supabase.auth.", "client.auth.")
-          app.write_text(source[:start] + block + source[end:])
-          Path("ai-workbench/src/vite-env.d.ts").write_text('/// <reference types="vite/client" />\n')
-          PY
-
-      - name: Preserve editable application source
-        run: |
-          rm -rf app
-          cp -a ai-workbench app
-          rm -rf app/node_modules app/dist app/android app/ios
+          test -f app/package.json
+          test -f app/src/App.tsx
+          test ! -e app/.env
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
