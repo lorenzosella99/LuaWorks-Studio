@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "AI Workbench Private",
+  "name": "AI Workbench",
   "short_name": "Workbench",
-  "description": "Assistente pessoal para código, Stormworks Lua, imagens e personalidade.",
+  "description": "Ambiente de trabalho para criação, programação e produtividade.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
