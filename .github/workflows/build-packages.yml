@@ -65,9 +65,40 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Build Android APK
+      - name: Build signed Android APK when signing secrets are configured
         working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "Signing secrets found: building a signed release APK."
+            KEYSTORE="$RUNNER_TEMP/ai-workbench-release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            ./gradlew assembleRelease --no-daemon
+            UNSIGNED_APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*-unsigned.apk' -print -quit)"
+            if [[ -z "$UNSIGNED_APK" ]]; then
+              echo "Unsigned release APK not found." >&2
+              exit 1
+            fi
+            APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --out "$RUNNER_TEMP/AI-Workbench-Android.apk" \
+              "$UNSIGNED_APK"
+            "$APKSIGNER" verify --verbose "$RUNNER_TEMP/AI-Workbench-Android.apk"
+            rm -f "$KEYSTORE"
+          else
+            echo "::warning::Android signing secrets are missing. Building an unsigned-by-release-identity debug APK for testing."
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/AI-Workbench-Android.apk"
+          fi
 
       - name: Prepare shared Linux application files
         run: |
@@ -235,7 +266,7 @@ jobs:
       - name: Collect packages
         run: |
           mkdir -p "$RUNNER_TEMP/package-output"
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/package-output/AI-Workbench-Android.apk"
+          cp "$RUNNER_TEMP/AI-Workbench-Android.apk" "$RUNNER_TEMP/package-output/AI-Workbench-Android.apk"
           cp "$RUNNER_TEMP/AI-Workbench-Ubuntu-Debian.deb" "$RUNNER_TEMP/package-output/"
           cp "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm" "$RUNNER_TEMP/package-output/"
           cp "$RUNNER_TEMP/AI-Workbench-Linux-x86_64.AppImage" "$RUNNER_TEMP/package-output/"
