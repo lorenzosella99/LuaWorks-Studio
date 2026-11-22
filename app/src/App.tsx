@@ -208,7 +208,7 @@ function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings;
 
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
   { id: 'auto', label: 'Automático', short: 'Auto', description: 'A IA escolhe o modo mais adequado para cada pedido' },
-  { id: 'general', label: 'Código Geral', short: 'Código', description: 'TypeScript, Python, SQL e web' },
+  { id: 'general', label: 'Geral e Código', short: 'Geral', description: 'Conversa normal e programação quando você pedir' },
   { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · revisão e validação de código' },
   { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Criação visual a partir de descrições' },
   { id: 'personality', label: 'Personalidade', short: 'Persona', description: 'Converse com o estilo e personalidade que você definir' },
@@ -398,6 +398,89 @@ export default function App() {
     setLoadingMessages(false);
   }, [showToast]);
 
+  // Ao entrar em outro dispositivo, abre automaticamente a conversa mais recente.
+  useEffect(() => {
+    if (!session?.user?.id || activeId || conversations.length === 0) return;
+    const mostRecent = conversations[0];
+    setActiveId(mostRecent.id);
+    setMode(mostRecent.mode);
+    setView('chat');
+    void loadMessages(mostRecent.id);
+  }, [activeId, conversations, loadMessages, session?.user?.id]);
+
+  // Mantém a barra lateral e a conversa aberta sincronizadas entre dispositivos.
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) return;
+    const userId = session.user.id;
+    const channel = supabase
+      .channel(`workbench-sync-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = String((payload.old as Partial<Conversation>).id ?? '');
+            setConversations((current) => current.filter((item) => item.id !== deletedId));
+            if (activeId === deletedId) {
+              setActiveId(null);
+              setMessages([]);
+            }
+            return;
+          }
+          const incoming = payload.new as Conversation;
+          setConversations((current) => [
+            incoming,
+            ...current.filter((item) => item.id !== incoming.id),
+          ].sort((left, right) => right.updated_at.localeCompare(left.updated_at)));
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const incoming = (payload.eventType === 'DELETE' ? payload.old : payload.new) as ChatMessage;
+          if (!incoming?.id || incoming.conversation_id !== activeId) return;
+
+          if (payload.eventType === 'DELETE') {
+            setMessages((current) => current.filter((item) => item.id !== incoming.id));
+            return;
+          }
+
+          setMessages((current) => {
+            const withoutDuplicate = current.filter((item) => item.id !== incoming.id);
+            return [...withoutDuplicate, incoming].sort((left, right) =>
+              left.created_at.localeCompare(right.created_at)
+            );
+          });
+        },
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('AI Workbench: sincronização em tempo real indisponível; a atualização será tentada ao retornar ao app.');
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId, session?.user?.id]);
+
+  // Recupera alterações feitas enquanto o aplicativo estava em segundo plano.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const refreshFromServer = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadConversations();
+      if (activeId) void loadMessages(activeId);
+    };
+    window.addEventListener('focus', refreshFromServer);
+    document.addEventListener('visibilitychange', refreshFromServer);
+    return () => {
+      window.removeEventListener('focus', refreshFromServer);
+      document.removeEventListener('visibilitychange', refreshFromServer);
+    };
+  }, [activeId, loadConversations, loadMessages, session?.user?.id]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !isNearBottom) return;
@@ -553,7 +636,14 @@ export default function App() {
       content,
     }).select('*').single();
     if (error) throw error;
-    return data as ChatMessage;
+    const savedMessage = data as ChatMessage;
+    const { error: conversationError } = await supabase
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+      .eq('user_id', session.user.id);
+    if (conversationError) console.warn('Não foi possível atualizar a data da conversa:', conversationError.message);
+    return savedMessage;
   }
 
   async function sendMessage(event?: FormEvent) {
@@ -592,7 +682,7 @@ export default function App() {
       }
       const resolvedMode = typeof data?.selected_mode === 'string' ? data.selected_mode : mode;
       const modeNotice = mode === 'auto'
-        ? `> **Modo automático:** ${modes.find((item) => item.id === resolvedMode)?.label ?? 'Código Geral'}\n\n`
+        ? `> **Modo automático:** ${modes.find((item) => item.id === resolvedMode)?.label ?? 'Geral e Código'}\n\n`
         : '';
       if (data?.image_url && typeof data.image_url === 'string') {
         const imageMarkdown = `${modeNotice}![Imagem gerada](${data.image_url})`;
