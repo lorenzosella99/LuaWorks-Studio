@@ -1,4 +1,4 @@
-export type ChatMode = 'general' | 'stormworks' | 'image' | 'personality';
+export type ChatMode = 'auto' | 'general' | 'stormworks' | 'image' | 'personality';
 
 export type Conversation = {
   id: string;
