@@ -48,17 +48,17 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Generate native Android project
-        working-directory: ai-workbench
+        working-directory: app
         run: |
           npx cap add android
           npx cap sync android
 
       - name: Build Android APK
-        working-directory: ai-workbench/android
+        working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Package Zorin OS installer
-        working-directory: ai-workbench
+        working-directory: app
         run: |
           set -e
           ROOT="$RUNNER_TEMP/ai-workbench-deb"
