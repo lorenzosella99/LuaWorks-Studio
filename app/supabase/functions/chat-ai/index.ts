@@ -68,8 +68,14 @@ function resolveMode(prompt: string): WorkMode {
 function isCodeRequest(prompt: string): boolean {
   if (/\x60{3}/.test(prompt)) return true;
 
-  const action = /\b(?:crie|criar|gere|gerar|escreva|escrever|implemente|implementar|desenvolva|desenvolver|construa|construir|programe|programar|codifique|codificar|fa[cç]a|fazer|faz|monte|montar|mande|mandar|manda|passa|mostrar|mostra|mostre|quero|preciso|necessito)\b/i;
-  const artifact = /\b(?:c[oó]digo|script|programa|programa[cç][aã]o|fun[cç][aã]o|classe|componente|aplica[cç][aã]o|aplicativo|app|site|website|p[aá]gina|api|endpoint|bot|microcontrolador|lua|python|typescript|javascript|html|css|sql|stormworks|roblox|plugin|extens[aã]o|macro|jogo)\b/i;
+  const explicitArtifact = /\b(?:c[oó]digo|script|programa|fun[cç][aã]o|classe|componente|aplica[cç][aã]o|aplicativo|app|site|website|p[aá]gina|endpoint|bot|microcontrolador|plugin|extens[aã]o|macro|jogo)\b/i;
+  const explanationRequest = /\b(?:explique|explica|explicar|resuma|resumo|o que [eé]|como funciona|qual a diferen[cç]a|compare|me fale|me diz|me conte)\b/i;
+  if (explanationRequest.test(prompt) && !explicitArtifact.test(prompt)) return false;
+
+  if (/\b(?:quero|preciso|necessito)\b.{0,60}\b(?:c[oó]digo|script|programa|fun[cç][aã]o|site|app|aplicativo)\b/i.test(prompt)) return true;
+
+  const action = /\b(?:crie|criar|gere|gerar|escreva|escrever|implemente|implementar|desenvolva|desenvolver|construa|construir|programe|programar|codifique|codificar|fa[cç]a|fazer|faz|monte|montar|mande|mandar|manda|passa|mostrar|mostra|mostre|me\s+d[eê])\b/i;
+  const artifact = /\b(?:c[oó]digo|script|programa|fun[cç][aã]o|classe|componente|aplica[cç][aã]o|aplicativo|app|site|website|p[aá]gina|api|endpoint|bot|microcontrolador|lua|python|typescript|javascript|html|css|sql|stormworks|roblox|plugin|extens[aã]o|macro|jogo)\b/i;
   if (action.test(prompt) && artifact.test(prompt)) return true;
 
   const repair = /\b(?:corrija|corrigir|conserte|consertar|depure|debugue|refatore|refatorar|otimize|otimizar|edite|editar|modifique|modificar|revise|revisar)\b/i;
