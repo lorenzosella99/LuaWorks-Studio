@@ -141,9 +141,9 @@ export default function App() {
     try {
       window.localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(appearance));
     } catch {
-      showToast('Não foi possível salvar as preferências de aparência neste dispositivo.');
+      // O tema continua aplicado na sessão atual mesmo se o navegador bloquear o armazenamento local.
     }
-  }, [appearance, showToast]);
+  }, [appearance]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
