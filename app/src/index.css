@@ -333,3 +333,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .lua-method-note strong { color: #c7d8b0; font-weight: 600; }
 @media (max-width: 900px) { .lua-validator-page { width: min(100% - 36px, 850px); padding-top: 24px; } .lua-validator-grid { grid-template-columns: 1fr; } .lua-editor { min-height: 290px; } }
 @media (max-width: 680px) { .topbar-tool-button { font-size: 9px; height: 28px; padding: 0 7px; } .lua-page-heading { align-items: flex-start; flex-direction: column; gap: 13px; } .lua-page-heading h1 { font-size: 24px; } .lua-validator-page { width: calc(100% - 24px); padding-top: 22px; } .lua-editor { min-height: 260px; font-size: 10px; } .lua-editor-actions { justify-content: stretch; } .lua-editor-actions button { flex: 1 1 auto; justify-content: center; } }
+
+
+/* Diagnóstico contextual das integrações */
+.api-test-button { width: 100%; justify-content: center; margin: 6px 0 10px; }
+.api-test-warning { color: var(--text-muted, #9a9a9a); font-size: 12px; line-height: 1.5; margin: 0 0 12px; }
+.api-test-list { display: grid; gap: 8px; }
+.api-test-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 10px 11px; border: 1px solid var(--border, rgba(255,255,255,.08)); border-radius: 10px; background: rgba(255,255,255,.02); }
+.api-test-row > div { display: grid; gap: 3px; min-width: 0; }
+.api-test-row strong { font-size: 12px; font-weight: 600; }
+.api-test-row span { color: var(--text-muted, #9a9a9a); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.api-test-row small { color: var(--text-muted, #9a9a9a); font-size: 10px; white-space: nowrap; }
+.api-test-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #777; }
+.api-test-dot--running { background: #e2ad49; box-shadow: 0 0 0 3px rgba(226,173,73,.12); }
+.api-test-dot--ok { background: #46b17b; }
+.api-test-dot--error { background: #e16b6b; }
