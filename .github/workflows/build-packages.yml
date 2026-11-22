@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'source.part0*'
+      - 'source.tar.xz.b64'
       - '.github/workflows/build-packages.yml'
   workflow_dispatch:
 
@@ -21,7 +21,6 @@ jobs:
 
       - name: Reassemble source
         run: |
-          cat source.part00 source.part01 source.part02 source.part03 source.part04 source.part05 source.part06 > source.tar.xz.b64
           base64 --decode source.tar.xz.b64 | tar -xJf -
           test -f ai-workbench/package.json
           test ! -e ai-workbench/.env
