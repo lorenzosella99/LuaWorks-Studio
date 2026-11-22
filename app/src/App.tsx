@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import type { Session, User } from '@supabase/supabase-js';
 import type { CSSProperties } from 'react';
 import {
-  ArrowDown, ArrowUp, Bot, Check, Code2, Github, Image as ImageIcon,
-  LogOut, Menu, MessageSquare, MessageCircleHeart, Plus, Settings2, Sparkles, Trash2, X, Zap, Wrench,
+  ArrowDown, ArrowUp, Bot, Check, ChevronDown, Code2, Github, Image as ImageIcon,
+  LogOut, Menu, MessageSquare, MessageCircleHeart, Plus, Settings2, SlidersHorizontal, Sparkles, Trash2, X, Zap, Wrench,
 } from 'lucide-react';
 import MarkdownMessage from './components/MarkdownMessage';
 import LuaValidator from './components/LuaValidator';
@@ -14,6 +14,28 @@ const ALLOWED_EMAIL = 'lorenzosella99@gmail.com';
 const ALLOWED_USERNAME = 'loren';
 
 type ApiProbe = { id: string; title: string; status: 'idle' | 'running' | 'ok' | 'error'; detail: string };
+type EffortLevel = 'low' | 'medium' | 'ultra';
+type EffortSettings = { general: EffortLevel; stormworks: EffortLevel; personality: EffortLevel };
+
+const DEFAULT_EFFORTS: EffortSettings = { general: 'medium', stormworks: 'medium', personality: 'medium' };
+const EFFORT_STORAGE_KEY = 'ai-workbench-effort-v1';
+
+function loadEffortSettings(): EffortSettings {
+  if (typeof window === 'undefined') return DEFAULT_EFFORTS;
+  try {
+    const saved = window.localStorage.getItem(EFFORT_STORAGE_KEY);
+    if (!saved) return DEFAULT_EFFORTS;
+    const value = JSON.parse(saved) as Partial<EffortSettings>;
+    const valid = (item: unknown): item is EffortLevel => item === 'low' || item === 'medium' || item === 'ultra';
+    return {
+      general: valid(value.general) ? value.general : DEFAULT_EFFORTS.general,
+      stormworks: valid(value.stormworks) ? value.stormworks : DEFAULT_EFFORTS.stormworks,
+      personality: valid(value.personality) ? value.personality : DEFAULT_EFFORTS.personality,
+    };
+  } catch {
+    return DEFAULT_EFFORTS;
+  }
+}
 
 type AppearanceSettings = {
   pageWidth: 'compact' | 'standard' | 'wide' | 'full';
@@ -62,6 +84,7 @@ function isAllowedAccount(user: User | null | undefined) {
 }
 
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
+  { id: 'auto', label: 'Automático', short: 'Auto', description: 'A IA escolhe o modo mais adequado para cada pedido' },
   { id: 'general', label: 'Código Geral', short: 'Código', description: 'TypeScript, Python, SQL e web' },
   { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · análise estática sem Gemini' },
   { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Geração visual pelo Pollinations' },
@@ -101,7 +124,9 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [view, setView] = useState<'chat' | 'lua-validator'>('chat');
-  const [mode, setMode] = useState<ChatMode>('general');
+  const [mode, setMode] = useState<ChatMode>('auto');
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [effortByMode, setEffortByMode] = useState<EffortSettings>(() => loadEffortSettings());
   const [draft, setDraft] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
@@ -124,7 +149,15 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
-  const currentMode = modes.find((item) => item.id === mode)!;
+  const currentMode = modes.find((item) => item.id === mode) ?? modes[0];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(EFFORT_STORAGE_KEY, JSON.stringify(effortByMode));
+    } catch {
+      // As preferências continuam ativas durante esta sessão.
+    }
+  }, [effortByMode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -421,20 +454,23 @@ export default function App() {
 
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, messages: history },
+        body: { mode, effortByMode, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
         throw new Error(details || 'Falha ao chamar chat-ai.');
       }
-      if (mode === 'image') {
-        if (!data?.image_url || typeof data.image_url !== 'string') throw new Error(data?.error ?? 'A API de imagens não retornou uma URL válida.');
-        const imageMarkdown = `![Imagem gerada](${data.image_url})`;
+      const resolvedMode = typeof data?.selected_mode === 'string' ? data.selected_mode : mode;
+      const modeNotice = mode === 'auto'
+        ? `> **Modo automático:** ${modes.find((item) => item.id === resolvedMode)?.label ?? 'Código Geral'}\n\n`
+        : '';
+      if (data?.image_url && typeof data.image_url === 'string') {
+        const imageMarkdown = `${modeNotice}![Imagem gerada](${data.image_url})`;
         const assistantMessage = await persistMessage(conversationId, 'assistant', imageMarkdown);
         setMessages((items) => [...items, assistantMessage]);
       } else {
         if (!data?.answer || typeof data.answer !== 'string') throw new Error(data?.error ?? 'Resposta inválida do servidor de IA.');
-        const assistantMessage = await persistMessage(conversationId, 'assistant', data.answer);
+        const assistantMessage = await persistMessage(conversationId, 'assistant', modeNotice + data.answer);
         setMessages((items) => [...items, assistantMessage]);
       }
       await loadConversations();
@@ -736,26 +772,6 @@ export default function App() {
         </header>
 
         {view === 'lua-validator' ? <LuaValidator /> : <>
-        <section className="mode-strip">
-          <div className="mode-selector" role="tablist" aria-label="Modo de trabalho">
-            {modes.map((item) => {
-              const Icon = item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : MessageCircleHeart;
-              return (
-                <button
-                  key={item.id}
-                  role="tab"
-                  aria-selected={mode === item.id}
-                  className={`mode-tab ${mode === item.id ? 'mode-tab--active' : ''}`}
-                  onClick={() => { void changeMode(item.id); }}
-                >
-                  <Icon size={15} /><span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="mode-description"><span className="mode-indicator" />{currentMode.description}</div>
-        </section>
-
         <div className="chat-scroll" ref={scrollRef} onScroll={(event) => {
           const el = event.currentTarget;
           setIsNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 140);
@@ -824,10 +840,61 @@ export default function App() {
               disabled={sending}
             />
             <div className="composer-bottom">
-              <div className="composer-hints"><span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Pollinations' : mode === 'stormworks' ? 'Geração IA + análise estática' : mode === 'personality' ? 'Personalidade' : 'Código geral'}</span><span className="keyboard-hint">Enter para enviar · Shift + Enter para nova linha</span></div>
-              <button className="send-button" type="submit" disabled={!draft.trim() || sending} aria-label="Enviar mensagem">
-                {sending ? <span className="send-spinner" /> : <ArrowUp size={18} />}
-              </button>
+              <div className="composer-hints">
+                <span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Pollinations' : mode === 'stormworks' ? 'Geração + revisão Lua' : mode === 'personality' ? 'Personalidade' : mode === 'auto' ? 'Seleção automática' : 'Código geral'}</span>
+                <span className="keyboard-hint">Enter para enviar · Shift + Enter para nova linha</span>
+              </div>
+              <div className="composer-actions">
+                <div className="chat-mode-control">
+                  <button className="chat-mode-trigger" type="button" onClick={() => setModeMenuOpen((open) => !open)} aria-expanded={modeMenuOpen} aria-label="Configurar modo e esforço da IA">
+                    <SlidersHorizontal size={14} /><span>{currentMode.short}</span><ChevronDown size={13} />
+                  </button>
+                  {modeMenuOpen && (
+                    <div className="chat-mode-menu">
+                      <div className="chat-menu-heading">Modo de trabalho</div>
+                      <div className="chat-mode-options">
+                        {modes.map((item) => {
+                          const Icon = item.id === 'auto' ? Sparkles : item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : MessageCircleHeart;
+                          return (
+                            <button key={item.id} type="button" className={'chat-mode-option' + (mode === item.id ? ' chat-mode-option--active' : '')} onClick={() => { void changeMode(item.id); setModeMenuOpen(false); }}>
+                              <Icon size={15} />
+                              <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                              {mode === item.id && <Check size={15} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="chat-menu-divider" />
+                      <div className="chat-menu-heading">Nível de esforço por modo</div>
+                      {([
+                        ['general', 'Código Geral'],
+                        ['stormworks', 'Stormworks Lua'],
+                        ['personality', 'Personalidade'],
+                      ] as const).map(([effortMode, label]) => (
+                        <div className="effort-setting-row" key={effortMode}>
+                          <span className="effort-setting-label">{label}</span>
+                          <div className="effort-segment-group" role="group" aria-label={'Esforço ' + label}>
+                            {([
+                              ['low', 'Baixo'],
+                              ['medium', 'Médio'],
+                              ['ultra', 'Ultra'],
+                            ] as const).map(([level, levelLabel]) => (
+                              <button key={level} type="button" className={'effort-segment' + (effortByMode[effortMode] === level ? ' effort-segment--active' : '')} aria-pressed={effortByMode[effortMode] === level} onClick={() => setEffortByMode((previous) => ({ ...previous, [effortMode]: level }))}>{levelLabel}</button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="effort-setting-row effort-setting-row--note">
+                        <span className="effort-setting-label">Imagem</span><small>O gerador visual controla a qualidade; não há código para revisar.</small>
+                      </div>
+                      <p className="chat-menu-note">Médio e Ultra fazem rodadas adicionais de revisão e simulação de casos. A execução real depende do ambiente onde o código será usado.</p>
+                    </div>
+                  )}
+                </div>
+                <button className="send-button" type="submit" disabled={!draft.trim() || sending} aria-label="Enviar mensagem">
+                  {sending ? <span className="send-spinner" /> : <ArrowUp size={18} />}
+                </button>
+              </div>
             </div>
           </form>
           <div className="disclaimer">A IA pode cometer erros. Revise o código antes de usar em projetos importantes.</div>
