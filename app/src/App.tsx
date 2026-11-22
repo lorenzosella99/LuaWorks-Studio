@@ -51,6 +51,29 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
 
 const APPEARANCE_STORAGE_KEY = 'ai-workbench-appearance-v1';
 
+function normalizeEffortSettings(candidate: unknown): EffortSettings {
+  const value = candidate && typeof candidate === 'object' ? candidate as Partial<EffortSettings> : {};
+  const valid = (item: unknown): item is EffortLevel => item === 'low' || item === 'medium' || item === 'ultra';
+  return {
+    general: valid(value.general) ? value.general : DEFAULT_EFFORTS.general,
+    stormworks: valid(value.stormworks) ? value.stormworks : DEFAULT_EFFORTS.stormworks,
+    personality: valid(value.personality) ? value.personality : DEFAULT_EFFORTS.personality,
+  };
+}
+
+function normalizeAppearanceSettings(candidate: unknown): AppearanceSettings {
+  const value = candidate && typeof candidate === 'object' ? candidate as Partial<AppearanceSettings> : {};
+  const widths: AppearanceSettings['pageWidth'][] = ['compact', 'standard', 'wide', 'full'];
+  const validColor = (color: unknown): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+  return {
+    pageWidth: widths.includes(value.pageWidth as AppearanceSettings['pageWidth'])
+      ? value.pageWidth as AppearanceSettings['pageWidth']
+      : DEFAULT_APPEARANCE.pageWidth,
+    primaryColor: validColor(value.primaryColor) ? value.primaryColor.toUpperCase() : DEFAULT_APPEARANCE.primaryColor,
+    secondaryColor: validColor(value.secondaryColor) ? value.secondaryColor.toUpperCase() : DEFAULT_APPEARANCE.secondaryColor,
+  };
+}
+
 function loadAppearanceSettings(): AppearanceSettings {
   if (typeof window === 'undefined') return DEFAULT_APPEARANCE;
   try {
@@ -116,36 +139,18 @@ function getWelcomeCopy(user: User | null, date: Date) {
   return { title: `Boa noite, ${name}!`, subtitle: 'Feche o dia criando algo de que você possa se orgulhar.', encouragement };
 }
 
-function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings; onSave: (next: AppearanceSettings) => void }) {
-  const [pageWidth, setPageWidth] = useState<AppearanceSettings['pageWidth']>(value.pageWidth);
-  const [preview, setPreview] = useState<{ primaryColor: string; secondaryColor: string } | null>(null);
-  const primaryInputRef = useRef<HTMLInputElement>(null);
-  const secondaryInputRef = useRef<HTMLInputElement>(null);
-  const primaryHexRef = useRef<HTMLOutputElement>(null);
-  const secondaryHexRef = useRef<HTMLOutputElement>(null);
+function AppearanceSettingsPanel({ value, onChange }: { value: AppearanceSettings; onChange: (next: AppearanceSettings) => void }) {
+  const [preview, setPreview] = useState(false);
 
-  const currentColors = () => ({
-    primaryColor: primaryInputRef.current?.value.toUpperCase() ?? value.primaryColor,
-    secondaryColor: secondaryInputRef.current?.value.toUpperCase() ?? value.secondaryColor,
-  });
-  const updateHex = (input: HTMLInputElement, output: HTMLOutputElement | null) => {
-    if (output) output.textContent = input.value.toUpperCase();
+  const reset = () => {
+    onChange(DEFAULT_APPEARANCE);
+    setPreview(false);
   };
-  const resetDraft = () => {
-    setPageWidth(DEFAULT_APPEARANCE.pageWidth);
-    if (primaryInputRef.current) primaryInputRef.current.value = DEFAULT_APPEARANCE.primaryColor;
-    if (secondaryInputRef.current) secondaryInputRef.current.value = DEFAULT_APPEARANCE.secondaryColor;
-    if (primaryInputRef.current) updateHex(primaryInputRef.current, primaryHexRef.current);
-    if (secondaryInputRef.current) updateHex(secondaryInputRef.current, secondaryHexRef.current);
-    setPreview(null);
-  };
-  const showPreview = () => setPreview(currentColors());
-  const saveDraft = () => onSave({ pageWidth, ...currentColors() });
 
   return (
     <div className="settings-section appearance-section">
       <div className="settings-section-title"><Sparkles size={17} /> Aparência</div>
-      <p>Personalize a largura e as cores. Os ajustes ficam em rascunho até você salvar.</p>
+      <p>As alterações são salvas automaticamente neste dispositivo e na sua conta.</p>
       <div className="appearance-control-group">
         <div className="appearance-control-heading"><strong>Tamanho da página</strong><span>largura do conteúdo</span></div>
         <div className="appearance-width-options" role="group" aria-label="Largura da página">
@@ -155,40 +160,40 @@ function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings;
             ['wide', 'Amplo'],
             ['full', 'Total'],
           ] as const).map(([width, label]) => (
-            <button key={width} type="button" className={'appearance-width-option' + (pageWidth === width ? ' appearance-width-option--active' : '')} aria-pressed={pageWidth === width} onClick={() => setPageWidth(width)}>{label}</button>
+            <button key={width} type="button" className={'appearance-width-option' + (value.pageWidth === width ? ' appearance-width-option--active' : '')} aria-pressed={value.pageWidth === width} onClick={() => onChange({ ...value, pageWidth: width })}>{label}</button>
           ))}
         </div>
       </div>
       <div className="appearance-control-group">
-        <div className="appearance-control-heading"><strong>Paleta de cores</strong><span>prévia antes de salvar</span></div>
+        <div className="appearance-control-heading"><strong>Paleta de cores</strong><span>salva ao escolher</span></div>
         <div className="appearance-color-grid">
           <label className="appearance-color-control">
             <span>Cor primária</span>
             <div className="appearance-color-input">
-              <input ref={primaryInputRef} type="color" defaultValue={value.primaryColor} onInput={(event) => updateHex(event.currentTarget, primaryHexRef.current)} aria-label="Escolher cor primária" />
-              <output ref={primaryHexRef}>{value.primaryColor}</output>
+              <input type="color" value={value.primaryColor} onChange={(event) => onChange({ ...value, primaryColor: event.currentTarget.value.toUpperCase() })} aria-label="Escolher cor primária" />
+              <output>{value.primaryColor}</output>
             </div>
           </label>
           <label className="appearance-color-control">
             <span>Cor secundária</span>
             <div className="appearance-color-input">
-              <input ref={secondaryInputRef} type="color" defaultValue={value.secondaryColor} onInput={(event) => updateHex(event.currentTarget, secondaryHexRef.current)} aria-label="Escolher cor secundária" />
-              <output ref={secondaryHexRef}>{value.secondaryColor}</output>
+              <input type="color" value={value.secondaryColor} onChange={(event) => onChange({ ...value, secondaryColor: event.currentTarget.value.toUpperCase() })} aria-label="Escolher cor secundária" />
+              <output>{value.secondaryColor}</output>
             </div>
           </label>
         </div>
       </div>
       <div className="appearance-preview-actions">
-        <button className="secondary-button" type="button" onClick={showPreview}><Sparkles size={13} /> {preview ? 'Atualizar prévia' : 'Prévia rápida'}</button>
+        <button className="secondary-button" type="button" onClick={() => setPreview((current) => !current)}><Sparkles size={13} /> {preview ? 'Ocultar prévia' : 'Prévia rápida'}</button>
         <span>Não altera o restante da tela</span>
       </div>
       {preview && (
         <div className="appearance-preview-wrap">
           <div className="appearance-preview" style={{
-            '--accent': preview.primaryColor,
-            '--accent-ink': readableAccentInk(preview.primaryColor),
-            '--secondary': preview.secondaryColor,
-            background: `linear-gradient(118deg, ${preview.primaryColor} 0%, color-mix(in srgb, ${preview.primaryColor} 48%, ${preview.secondaryColor}) 52%, ${preview.secondaryColor} 100%)`,
+            '--accent': value.primaryColor,
+            '--accent-ink': readableAccentInk(value.primaryColor),
+            '--secondary': value.secondaryColor,
+            background: `linear-gradient(118deg, ${value.primaryColor} 0%, color-mix(in srgb, ${value.primaryColor} 48%, ${value.secondaryColor}) 52%, ${value.secondaryColor} 100%)`,
           } as CSSProperties}>
             <div className="appearance-preview-content">
               <span className="appearance-preview-mark"><Sparkles size={14} /></span>
@@ -199,8 +204,8 @@ function AppearanceSettingsPanel({ value, onSave }: { value: AppearanceSettings;
         </div>
       )}
       <div className="appearance-save-actions">
-        <button className="appearance-reset" type="button" onClick={resetDraft}>Restaurar padrão</button>
-        <button className="primary-button" type="button" onClick={saveDraft}><Check size={14} /> Salvar aparência</button>
+        <button className="appearance-reset" type="button" onClick={reset}>Restaurar padrão</button>
+        <span className="appearance-autosave-label">Salvo automaticamente</span>
       </div>
     </div>
   );
@@ -256,6 +261,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
+  const [preferencesReadyFor, setPreferencesReadyFor] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [githubStatus, setGithubStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
   const [apiProbes, setApiProbes] = useState<ApiProbe[]>([]);
   const [apiTestBusy, setApiTestBusy] = useState(false);
@@ -272,6 +279,7 @@ export default function App() {
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const currentMode = modes.find((item) => item.id === mode) ?? modes[0];
   const welcomeCopy = getWelcomeCopy(session?.user ?? null, welcomeTime);
@@ -408,27 +416,121 @@ export default function App() {
     void loadMessages(mostRecent.id);
   }, [activeId, conversations, loadMessages, session?.user?.id]);
 
-  // Mantém a barra lateral e a conversa aberta sincronizadas entre dispositivos.
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // Carrega as preferências da conta e aplica-as em qualquer dispositivo.
   useEffect(() => {
     const client = supabase;
-    if (!client || !session?.user?.id) return;
-    const userId = session.user.id;
+    const userId = session?.user?.id;
+    if (!client || !userId) {
+      setPreferencesReadyFor(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreferencesReadyFor(null);
+
+    const loadPreferences = async () => {
+      const { data, error } = await client
+        .from('user_preferences')
+        .select('appearance, effort_by_mode, preferred_mode')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        showToast(`Erro ao carregar preferências: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        setAppearance(normalizeAppearanceSettings(data.appearance));
+        setEffortByMode(normalizeEffortSettings(data.effort_by_mode));
+        if (modes.some((item) => item.id === data.preferred_mode)) {
+          setMode(data.preferred_mode as ChatMode);
+        }
+      } else {
+        const { error: seedError } = await client
+          .from('user_preferences')
+          .upsert({
+            user_id: userId,
+            appearance,
+            effort_by_mode: effortByMode,
+            preferred_mode: mode,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+        if (seedError && !cancelled) {
+          showToast(`Erro ao iniciar preferências: ${seedError.message}`);
+          return;
+        }
+      }
+
+      if (!cancelled) setPreferencesReadyFor(userId);
+    };
+
+    void loadPreferences();
+    return () => { cancelled = true; };
+  }, [session?.user?.id, showToast]);
+
+  // Salva as preferências no banco com pequeno debounce e mantém uma cópia local imediata.
+  useEffect(() => {
+    const client = supabase;
+    const userId = session?.user?.id;
+    if (!client || !userId || preferencesReadyFor !== userId) return;
+
+    const payload = {
+      user_id: userId,
+      appearance,
+      effort_by_mode: effortByMode,
+      preferred_mode: mode,
+      updated_at: new Date().toISOString(),
+    };
+    const timeout = window.setTimeout(() => {
+      void client
+        .from('user_preferences')
+        .upsert(payload, { onConflict: 'user_id' })
+        .then(({ error }) => {
+          if (error) showToast(`Não foi possível salvar as preferências: ${error.message}`);
+        });
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [appearance, effortByMode, mode, preferencesReadyFor, session?.user?.id, showToast]);
+
+  // Uma única inscrição por conta: sem filtro de coluna no servidor, pois a validação
+  // anterior rejeitava user_id; RLS e a checagem local continuam isolando os dados.
+  useEffect(() => {
+    const client = supabase;
+    const userId = session?.user?.id;
+    if (!client || !userId) {
+      setRealtimeConnected(false);
+      return;
+    }
+
+    setRealtimeConnected(false);
     const channel = client
       .channel(`workbench-sync-${userId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations', filter: `user_id=eq.${userId}` },
+        { event: '*', schema: 'public', table: 'conversations' },
         (payload) => {
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<Conversation>;
+          if (row.user_id !== userId) return;
+
           if (payload.eventType === 'DELETE') {
-            const deletedId = String((payload.old as Partial<Conversation>).id ?? '');
+            const deletedId = String(row.id ?? '');
             setConversations((current) => current.filter((item) => item.id !== deletedId));
-            if (activeId === deletedId) {
+            if (activeIdRef.current === deletedId) {
+              activeIdRef.current = null;
               setActiveId(null);
               setMessages([]);
             }
             return;
           }
-          const incoming = payload.new as Conversation;
+
+          const incoming = row as Conversation;
           setConversations((current) => [
             incoming,
             ...current.filter((item) => item.id !== incoming.id),
@@ -437,10 +539,11 @@ export default function App() {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages', filter: `user_id=eq.${userId}` },
+        { event: '*', schema: 'public', table: 'messages' },
         (payload) => {
           const incoming = (payload.eventType === 'DELETE' ? payload.old : payload.new) as ChatMessage;
-          if (!incoming?.id || incoming.conversation_id !== activeId) return;
+          if (!incoming?.id || incoming.user_id !== userId) return;
+          if (activeIdRef.current !== incoming.conversation_id) return;
 
           if (payload.eventType === 'DELETE') {
             setMessages((current) => current.filter((item) => item.id !== incoming.id));
@@ -455,16 +558,57 @@ export default function App() {
           });
         },
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_preferences' },
+        (payload) => {
+          const incoming = payload.new as {
+            user_id?: string;
+            appearance?: unknown;
+            effort_by_mode?: unknown;
+            preferred_mode?: unknown;
+          };
+          if (payload.eventType === 'DELETE' || incoming.user_id !== userId) return;
+
+          const nextAppearance = normalizeAppearanceSettings(incoming.appearance);
+          const nextEfforts = normalizeEffortSettings(incoming.effort_by_mode);
+          setAppearance((current) => JSON.stringify(current) === JSON.stringify(nextAppearance) ? current : nextAppearance);
+          setEffortByMode((current) => JSON.stringify(current) === JSON.stringify(nextEfforts) ? current : nextEfforts);
+          if (modes.some((item) => item.id === incoming.preferred_mode)) {
+            setMode((current) => current === incoming.preferred_mode ? current : incoming.preferred_mode as ChatMode);
+          }
+        },
+      )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('AI Workbench: sincronização em tempo real indisponível; a atualização será tentada ao retornar ao app.');
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+          void loadConversations();
+          const openConversation = activeIdRef.current;
+          if (openConversation) void loadMessages(openConversation);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeConnected(false);
+          console.warn('AI Workbench: Realtime desconectado; atualização automática de segurança ativada.');
         }
       });
 
     return () => {
+      setRealtimeConnected(false);
       void client.removeChannel(channel);
     };
-  }, [activeId, session?.user?.id]);
+  }, [loadConversations, loadMessages, session?.user?.id, showToast]);
+
+  // Se o WebSocket falhar, busca alterações a cada 10 segundos enquanto o app estiver visível.
+  useEffect(() => {
+    if (!session?.user?.id || realtimeConnected) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadConversations();
+      const openConversation = activeIdRef.current;
+      if (openConversation) void loadMessages(openConversation);
+    };
+    const interval = window.setInterval(refresh, 10_000);
+    return () => window.clearInterval(interval);
+  }, [loadConversations, loadMessages, realtimeConnected, session?.user?.id]);
 
   // Recupera alterações feitas enquanto o aplicativo estava em segundo plano.
   useEffect(() => {
@@ -1128,7 +1272,7 @@ export default function App() {
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
-            <AppearanceSettingsPanel value={appearance} onSave={(next) => { setAppearance(next); showToast('Aparência salva.'); }} />
+            <AppearanceSettingsPanel value={appearance} onChange={setAppearance} />
 
             <div className="settings-section downloads-section">
               <div className="settings-section-title"><Download size={17} /> Downloads</div>
