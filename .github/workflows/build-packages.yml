@@ -1,0 +1,137 @@
+name: Build AI Workbench for Android and Zorin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source.part0*'
+      - '.github/workflows/build-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source archive
+        uses: actions/checkout@v4
+
+      - name: Reassemble source
+        run: |
+          cat source.part00 source.part01 source.part02 source.part03 source.part04 source.part05 source.part06 > source.tar.xz.b64
+          base64 --decode source.tar.xz.b64 | tar -xJf -
+          test -f ai-workbench/package.json
+          test ! -e ai-workbench/.env
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build web application
+        working-directory: ai-workbench
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+        env:
+          VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Generate native Android project
+        working-directory: ai-workbench
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build Android APK
+        working-directory: ai-workbench/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Package Zorin OS installer
+        working-directory: ai-workbench
+        run: |
+          set -e
+          ROOT="$RUNNER_TEMP/ai-workbench-deb"
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/ai-workbench/site" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+          cp -a dist/. "$ROOT/opt/ai-workbench/site/"
+          install -m 0644 public/icons/icon-512.png "$ROOT/usr/share/icons/hicolor/512x512/apps/ai-workbench.png"
+          cat > "$ROOT/DEBIAN/control" <<'CONTROL'
+          Package: ai-workbench
+          Version: 1.0.0
+          Section: devel
+          Priority: optional
+          Architecture: all
+          Depends: python3, xdg-utils
+          Maintainer: AI Workbench
+          Description: AI Workbench - aplicativo privado de assistencia e codigo
+           Interface local para abrir o AI Workbench no navegador padrao.
+          CONTROL
+          cat > "$ROOT/usr/bin/ai-workbench" <<'LAUNCHER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APP_DIR="/opt/ai-workbench/site"
+          STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-workbench"
+          mkdir -p "$STATE_DIR"
+          PID_FILE="$STATE_DIR/server.pid"
+          PORT_FILE="$STATE_DIR/server.port"
+          PORT=""
+          if [[ -f "$PID_FILE" && -f "$PORT_FILE" ]]; then
+            PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+            SAVED_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
+            if [[ -n "$PID" && -n "$SAVED_PORT" ]] && kill -0 "$PID" 2>/dev/null; then
+              PORT="$SAVED_PORT"
+            fi
+          fi
+          if [[ -z "$PORT" ]]; then
+            PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+            nohup python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$APP_DIR" >/dev/null 2>&1 </dev/null &
+            echo "$!" > "$PID_FILE"
+            echo "$PORT" > "$PORT_FILE"
+            sleep 1
+            if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+              rm -f "$PID_FILE" "$PORT_FILE"
+              notify-send "AI Workbench" "Nao foi possivel iniciar o servidor local." 2>/dev/null || true
+              exit 1
+            fi
+          fi
+          xdg-open "http://127.0.0.1:$PORT/"
+          LAUNCHER
+          chmod 0755 "$ROOT/usr/bin/ai-workbench"
+          cat > "$ROOT/usr/share/applications/ai-workbench.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=AI Workbench
+          Comment=Seu espaco privado de IA e programacao
+          Exec=ai-workbench
+          Icon=ai-workbench
+          Terminal=false
+          Categories=Development;Utility;
+          StartupNotify=true
+          DESKTOP
+          chmod 0644 "$ROOT/usr/share/applications/ai-workbench.desktop"
+          dpkg-deb --root-owner-group --build "$ROOT" "$RUNNER_TEMP/ai-workbench-zorin.deb"
+
+      - name: Collect Android APK and Zorin installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-workbench-android-and-zorin
+          path: |
+            ai-workbench/android/app/build/outputs/apk/debug/app-debug.apk
+            ${{ runner.temp }}/ai-workbench-zorin.deb
+          if-no-files-found: error
+          retention-days: 30
