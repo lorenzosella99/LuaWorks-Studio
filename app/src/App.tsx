@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import type { CSSProperties } from 'react';
 import {
   ArrowDown, ArrowUp, Bot, Check, Code2, Github, Image as ImageIcon,
   LogOut, Menu, MessageSquare, MessageCircleHeart, Plus, Settings2, Sparkles, Trash2, X, Zap, Wrench,
@@ -13,6 +14,48 @@ const ALLOWED_EMAIL = 'lorenzosella99@gmail.com';
 const ALLOWED_USERNAME = 'loren';
 
 type ApiProbe = { id: string; title: string; status: 'idle' | 'running' | 'ok' | 'error'; detail: string };
+
+type AppearanceSettings = {
+  pageWidth: 'compact' | 'standard' | 'wide' | 'full';
+  primaryColor: string;
+  secondaryColor: string;
+};
+
+const DEFAULT_APPEARANCE: AppearanceSettings = {
+  pageWidth: 'standard',
+  primaryColor: '#D9F99D',
+  secondaryColor: '#8ED7CE',
+};
+
+const APPEARANCE_STORAGE_KEY = 'ai-workbench-appearance-v1';
+
+function loadAppearanceSettings(): AppearanceSettings {
+  if (typeof window === 'undefined') return DEFAULT_APPEARANCE;
+  try {
+    const saved = window.localStorage.getItem(APPEARANCE_STORAGE_KEY);
+    if (!saved) return DEFAULT_APPEARANCE;
+    const value = JSON.parse(saved) as Partial<AppearanceSettings>;
+    const validWidths: AppearanceSettings['pageWidth'][] = ['compact', 'standard', 'wide', 'full'];
+    const isColor = (color: unknown): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+    return {
+      pageWidth: validWidths.includes(value.pageWidth as AppearanceSettings['pageWidth']) ? value.pageWidth as AppearanceSettings['pageWidth'] : DEFAULT_APPEARANCE.pageWidth,
+      primaryColor: isColor(value.primaryColor) ? value.primaryColor.toUpperCase() : DEFAULT_APPEARANCE.primaryColor,
+      secondaryColor: isColor(value.secondaryColor) ? value.secondaryColor.toUpperCase() : DEFAULT_APPEARANCE.secondaryColor,
+    };
+  } catch {
+    return DEFAULT_APPEARANCE;
+  }
+}
+
+function readableAccentInk(hex: string) {
+  const value = hex.replace('#', '');
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance > 150 ? '#17210F' : '#FFFFFF';
+}
+
 
 function isAllowedAccount(user: User | null | undefined) {
   return Boolean(user && user.email?.trim().toLowerCase() === ALLOWED_EMAIL);
@@ -64,6 +107,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
   const [githubStatus, setGithubStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
   const [apiProbes, setApiProbes] = useState<ApiProbe[]>([]);
   const [apiTestBusy, setApiTestBusy] = useState(false);
@@ -81,6 +125,25 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const currentMode = modes.find((item) => item.id === mode)!;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const pageWidths: Record<AppearanceSettings['pageWidth'], string> = {
+      compact: '680px',
+      standard: '850px',
+      wide: '1120px',
+      full: '1440px',
+    };
+    root.style.setProperty('--accent', appearance.primaryColor);
+    root.style.setProperty('--accent-ink', readableAccentInk(appearance.primaryColor));
+    root.style.setProperty('--secondary', appearance.secondaryColor);
+    root.style.setProperty('--content-width', pageWidths[appearance.pageWidth]);
+    try {
+      window.localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(appearance));
+    } catch {
+      showToast('Não foi possível salvar as preferências de aparência neste dispositivo.');
+    }
+  }, [appearance, showToast]);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -609,7 +672,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ "--accent": appearance.primaryColor, "--accent-ink": readableAccentInk(appearance.primaryColor), "--secondary": appearance.secondaryColor } as CSSProperties}>
       {sidebarOpen && <button className="mobile-scrim" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
       <aside className={`sidebar ${sidebarOpen ? 'sidebar--open' : ''}`}>
         <div className="sidebar-top">
@@ -776,6 +839,67 @@ export default function App() {
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
+            <div className="settings-section appearance-section">
+              <div className="settings-section-title"><Sparkles size={17} /> Aparência</div>
+              <p>Personalize a largura da página e as cores principais do Workbench. As alterações são aplicadas imediatamente e ficam salvas neste dispositivo.</p>
+
+              <div className="appearance-control-group">
+                <div className="appearance-control-heading"><strong>Tamanho da página</strong><span>largura do conteúdo</span></div>
+                <div className="appearance-width-options" role="group" aria-label="Largura da página">
+                  {([
+                    ['compact', 'Compacto'],
+                    ['standard', 'Padrão'],
+                    ['wide', 'Amplo'],
+                    ['full', 'Total'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={'appearance-width-option' + (appearance.pageWidth === value ? ' appearance-width-option--active' : '')}
+                      aria-pressed={appearance.pageWidth === value}
+                      onClick={() => setAppearance((current) => ({ ...current, pageWidth: value }))}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="appearance-control-group">
+                <div className="appearance-control-heading"><strong>Paleta de cores</strong><span>escolha livre</span></div>
+                <div className="appearance-color-grid">
+                  <label className="appearance-color-control">
+                    <span>Cor primária</span>
+                    <div className="appearance-color-input">
+                      <input type="color" value={appearance.primaryColor} onChange={(event) => setAppearance((current) => ({ ...current, primaryColor: event.target.value.toUpperCase() }))} aria-label="Escolher cor primária" />
+                      <code>{appearance.primaryColor}</code>
+                    </div>
+                  </label>
+                  <label className="appearance-color-control">
+                    <span>Cor secundária</span>
+                    <div className="appearance-color-input">
+                      <input type="color" value={appearance.secondaryColor} onChange={(event) => setAppearance((current) => ({ ...current, secondaryColor: event.target.value.toUpperCase() }))} aria-label="Escolher cor secundária" />
+                      <code>{appearance.secondaryColor}</code>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="appearance-preview-wrap">
+                <div className="appearance-control-heading"><strong>Prévia da mistura</strong><span>dispersão suave</span></div>
+                <div className="appearance-preview">
+                  <span className="appearance-preview-orb appearance-preview-orb--one" />
+                  <span className="appearance-preview-orb appearance-preview-orb--two" />
+                  <div className="appearance-preview-content">
+                    <span className="appearance-preview-mark"><Sparkles size={14} /></span>
+                    <strong>AI Workbench</strong>
+                    <small>Primária + secundária</small>
+                  </div>
+                </div>
+              </div>
+
+              <button className="appearance-reset" type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)}>
+                Restaurar aparência padrão
+              </button>
+            </div>
             <div className="settings-section">
               <div className="settings-section-title"><Zap size={17} /> Diagnóstico das APIs</div>
               <p>Teste o banco e os quatro modos de IA enviando mensagens anteriores para conferir se cada modo respeita o contexto da conversa.</p>
