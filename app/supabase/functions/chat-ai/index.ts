@@ -220,18 +220,36 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   if (!refinedPrompt.trim()) throw new Error("O modelo de interpretação visual não retornou um prompt.");
 
   // Modelo 2: gera a imagem usando o prompt interpretado pelo primeiro modelo.
-  const res = await fetch("https://gen.pollinations.ai/v1/images/generations", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + imageKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: imageModel, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
-  });
-  const raw = await res.text();
-  let data: any = {};
-  try { data = JSON.parse(raw); } catch {}
-  if (!res.ok) throw new Error("Pollinations HTTP " + res.status + ": " + errText(data.error ?? raw.slice(0, 350)));
-  const url = data?.data?.[0]?.url;
-  if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou uma URL pública válida.");
-  return { url, refinedPrompt, imageModel, profile };
+  const generateWith = async (model: string) => {
+    const response = await fetch("https://gen.pollinations.ai/v1/images/generations", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + imageKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
+    });
+    const raw = await response.text();
+    let data: any = {};
+    try { data = JSON.parse(raw); } catch {}
+    if (!response.ok) throw Object.assign(new Error("Pollinations HTTP " + response.status + ": " + errText(data.error ?? raw.slice(0, 350))), { status: response.status });
+    const url = data?.data?.[0]?.url;
+    if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou uma URL pública válida.");
+    return url;
+  };
+
+  let url: string;
+  let usedModel = imageModel;
+  let usedFallback = false;
+  try {
+    url = await generateWith(imageModel);
+  } catch (error) {
+    const status = error && typeof error === "object" && "status" in error ? Number((error as {status: unknown}).status) : 0;
+    // Alguns modelos exigem saldo pago. Se a conta só tiver saldo de missões,
+    // usa o gerador base que aceita esse tipo de saldo, em vez de falhar a Edge Function.
+    if (status !== 402 || imageModel === "black-forest-labs/flux.1-schnell") throw error;
+    usedModel = "black-forest-labs/flux.1-schnell";
+    usedFallback = true;
+    url = await generateWith(usedModel);
+  }
+  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, profile };
 }
 
 Deno.serve(async (req: Request) => {
@@ -260,7 +278,7 @@ Deno.serve(async (req: Request) => {
 
     if (mode === "image") {
       const generated = await image(messages, body.imageProfile);
-      return json({ image_url: generated.url, model: generated.imageModel, prompt_model: IMAGE_PROMPT_MODEL, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
+      return json({ image_url: generated.url, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: IMAGE_PROMPT_MODEL, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
