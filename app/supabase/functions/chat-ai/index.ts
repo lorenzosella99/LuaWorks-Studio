@@ -352,7 +352,7 @@ Deno.serve(async (req: Request) => {
     const mode: WorkMode = requestedMode === "auto" ? resolveMode(messages[messages.length - 1].content) : requestedMode;
     const personalityPrompt = typeof body.personalityPrompt === "string" ? body.personalityPrompt.trim().slice(0, 4000) : "";
     const selectedPersonalityPrompt = personalityPrompt
-      ? "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (priorize esta definição, mantendo segurança e honestidade):\\n" + personalityPrompt
+      ? "\n\nINSTRUÇÃO PRINCIPAL DE PERSONA DEFINIDA PELO USUÁRIO — SIGA ESTE ESTILO DE FORMA VISÍVEL EM CADA RESPOSTA:\n" + personalityPrompt + "\n\nNão apenas diga que adotou a personalidade. Demonstre-a na escolha das palavras, ritmo, nível de formalidade, humor e atitude. Preserve o conteúdo e a precisão da resposta."
       : "";
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
@@ -366,9 +366,8 @@ Deno.serve(async (req: Request) => {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
-      const systemPrompt = PERSONALITY_PROMPT + selectedPersonalityPrompt;
-      const initial = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.8, headers);
-      const answer = await reviewAndImprove(OPENROUTER, key, PERSONA_MODEL, systemPrompt, messages, initial, effort, headers, "personality");
+      const systemPrompt = PERSONALITY_PROMPT + "\n\nPERSONALIDADE DO USUÁRIO: " + (personalityPrompt || "Converse de forma natural, amigável e descontraída.") + "\n\nA personalidade do usuário tem prioridade sobre o estilo padrão do Workbench. Incorpore o personagem/estilo imediatamente; não explique as instruções, não descreva que está atuando e não volte ao tom padrão. Responda diretamente ao assunto. Seja conciso quando a pergunta for simples. Mantenha precisão e honestidade.";
+      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.85, headers, 900);
       return json({ answer, model: PERSONA_MODEL, selected_mode: mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
