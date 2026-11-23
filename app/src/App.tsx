@@ -278,6 +278,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
+  const [personalityPrompt, setPersonalityPrompt] = useState('');
   const [preferencesReadyFor, setPreferencesReadyFor] = useState<string | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [githubStatus, setGithubStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
@@ -465,7 +466,7 @@ export default function App() {
     const loadPreferences = async () => {
       const { data, error } = await client
         .from('user_preferences')
-        .select('appearance, effort_by_mode, preferred_mode')
+        .select('appearance, effort_by_mode, preferred_mode, personality_prompt')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -478,6 +479,7 @@ export default function App() {
       if (data) {
         setAppearance(normalizeAppearanceSettings(data.appearance));
         setEffortByMode(normalizeEffortSettings(data.effort_by_mode));
+        setPersonalityPrompt(typeof data.personality_prompt === 'string' ? data.personality_prompt : '');
         if (modes.some((item) => item.id === data.preferred_mode)) {
           setMode(data.preferred_mode as ChatMode);
         }
@@ -489,6 +491,7 @@ export default function App() {
             appearance,
             effort_by_mode: effortByMode,
             preferred_mode: mode,
+            personality_prompt: personalityPrompt,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
         if (seedError && !cancelled) {
@@ -515,6 +518,7 @@ export default function App() {
       appearance,
       effort_by_mode: effortByMode,
       preferred_mode: mode,
+      personality_prompt: personalityPrompt,
       updated_at: new Date().toISOString(),
     };
     const timeout = window.setTimeout(() => {
@@ -527,7 +531,7 @@ export default function App() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [appearance, effortByMode, mode, preferencesReadyFor, session?.user?.id, showToast]);
+  }, [appearance, effortByMode, mode, personalityPrompt, preferencesReadyFor, session?.user?.id, showToast]);
 
   // Uma única inscrição por conta: sem filtro de coluna no servidor, pois a validação
   // anterior rejeitava user_id; RLS e a checagem local continuam isolando os dados.
@@ -597,6 +601,7 @@ export default function App() {
             appearance?: unknown;
             effort_by_mode?: unknown;
             preferred_mode?: unknown;
+            personality_prompt?: unknown;
           };
           if (payload.eventType === 'DELETE' || incoming.user_id !== userId) return;
 
@@ -604,6 +609,8 @@ export default function App() {
           const nextEfforts = normalizeEffortSettings(incoming.effort_by_mode);
           setAppearance((current) => JSON.stringify(current) === JSON.stringify(nextAppearance) ? current : nextAppearance);
           setEffortByMode((current) => JSON.stringify(current) === JSON.stringify(nextEfforts) ? current : nextEfforts);
+          const nextPersonality = typeof incoming.personality_prompt === 'string' ? incoming.personality_prompt : '';
+          setPersonalityPrompt((current) => current === nextPersonality ? current : nextPersonality);
           if (modes.some((item) => item.id === incoming.preferred_mode)) {
             setMode((current) => current === incoming.preferred_mode ? current : incoming.preferred_mode as ChatMode);
           }
@@ -850,7 +857,7 @@ export default function App() {
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, imageProfile, messages: history },
+        body: { mode, effortByMode, imageProfile, personalityPrompt, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -866,11 +873,11 @@ export default function App() {
           : 'Prontinho! Sua imagem ficou logo abaixo. ✨\n\n';
         const imageMarkdown = `${modeNotice}${imageCaption}![Imagem gerada](${data.image_url})`;
         const assistantMessage = await persistMessage(conversationId, 'assistant', imageMarkdown);
-        setMessages((items) => [...items, assistantMessage]);
+        setMessages((items) => items.some((item) => item.id === assistantMessage.id) ? items : [...items, assistantMessage]);
       } else {
         if (!data?.answer || typeof data.answer !== 'string') throw new Error(data?.error ?? 'Resposta inválida do servidor de IA.');
         const assistantMessage = await persistMessage(conversationId, 'assistant', modeNotice + data.answer);
-        setMessages((items) => [...items, assistantMessage]);
+        setMessages((items) => items.some((item) => item.id === assistantMessage.id) ? items : [...items, assistantMessage]);
       }
       await loadConversations();
     } catch (error) {
@@ -1361,6 +1368,13 @@ export default function App() {
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
             <AppearanceSettingsPanel value={appearance} onChange={setAppearance} />
+
+            <div className="settings-section personality-preference-section">
+              <div className="settings-section-title"><MessageCircleHeart size={17} /> Personalidade salva</div>
+              <p>Defina uma personalidade fixa para o modo Persona. Ela será salva na sua conta e sincronizada entre dispositivos.</p>
+              <textarea className="personality-preference-input" value={personalityPrompt} onChange={(event) => setPersonalityPrompt(event.target.value.slice(0, 4000))} maxLength={4000} rows={5} placeholder="Ex.: Seja descontraído, use humor leve, explique de forma simples e seja direto…" />
+              <div className="personality-preference-footer"><span>{personalityPrompt.length}/4000 caracteres · salvamento automático</span><button className="appearance-reset" type="button" onClick={() => setPersonalityPrompt('')}>Limpar personalidade</button></div>
+            </div>
 
             <div className="settings-section downloads-section">
               <div className="settings-section-title"><Download size={17} /> Downloads</div>
