@@ -66,7 +66,9 @@ function isEffortLevel(value: unknown): value is EffortLevel {
 
 function resolveMode(prompt: string): WorkMode {
   if (/stormworks|microcontrolador|micro\s*controlador|\bonTick\b|\bonDraw\b|lua\s+vanilla/i.test(prompt)) return "stormworks";
-  if (/(?:gere|gerar|crie|criar|desenhe|desenhar)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital/i.test(prompt)) return "image";
+  // Descrições visuais naturais também acionam imagens no modo automático,
+  // mesmo sem verbos como "gere" ou "crie". Ex.: "um avião com o eclipse de fundo".
+  if (/(?:gere|gerar|crie|criar|desenhe|desenhar|produza|produzir)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital|\b(?:de fundo|ao fundo|no fundo|in the background|background)\b/i.test(prompt)) return "image";
   if (/modo personalidade|personalidade|interprete|finja\s+ser|aja\s+como|roleplay|converse\s+como|estilo\s+de\s+fala/i.test(prompt)) return "personality";
   return "general";
 }
