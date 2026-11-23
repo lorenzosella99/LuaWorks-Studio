@@ -86,7 +86,7 @@ Na aplicação, abra **Configurações → Integração com GitHub** e conecte u
 Os workflows em `.github/workflows/` usam a pasta `app/` como fonte principal:
 
 - `publish-site.yml`: compila e publica a interface estática no GitHub Pages.
-- `build-packages.yml`: compila o APK Android e o instalador `.deb` para Zorin OS.
+- `build-packages.yml`: compila os pacotes Android (APK), Windows (instalador e portátil) e Linux (AppImage, DEB, RPM e TAR.GZ portátil). Publica os arquivos na release `latest`, usada também pelo aviso de atualização dentro do aplicativo.
 
 Ambos rodam automaticamente quando arquivos em `app/` ou no próprio workflow mudam. Os pacotes aparecem como artefatos nas execuções do GitHub Actions. Para abrir o site, ative GitHub Pages em **Settings → Pages**, usando a branch `main` e a pasta raiz (`/(root)`).
 
