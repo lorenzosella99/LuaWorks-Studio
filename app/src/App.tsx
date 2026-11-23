@@ -923,7 +923,7 @@ export default function App() {
       { id: 'database', title: 'Supabase · Banco e RLS', status: 'running', detail: 'Consultando conversas com a sessão atual…' },
       { id: 'general', title: 'Código Geral · Groq', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'stormworks', title: 'Stormworks Lua · Groq + análise local', status: 'idle', detail: 'Aguardando teste contextual.' },
-      { id: 'image', title: 'Geração de imagens · Qwen + Gemini 3 Pro Image', status: 'idle', detail: 'Qwen interpreta o pedido; Gemini 3 Pro Image gera a imagem. O teste pode consumir créditos.' },
+      { id: 'image', title: 'Geração de imagens · Interpretador + gerador', status: 'idle', detail: 'Testa o interpretador visual e o provedor principal, com fallback quando disponível. Pode consumir créditos.' },
       { id: 'personality', title: 'Personalidade · OpenRouter', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'github', title: 'GitHub · Edge Function', status: 'idle', detail: 'Aguardando verificação de conexão.' },
     ];
@@ -933,6 +933,7 @@ export default function App() {
     };
 
     try {
+      recordApiRequest('database');
       const { error } = await supabase.from('conversations').select('id').limit(1);
       if (error) throw error;
       updateProbe('database', 'ok', 'Supabase respondeu e a leitura respeitou as políticas RLS da sessão.');
@@ -954,7 +955,7 @@ export default function App() {
         if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
         if (typeof data?.error === 'string') throw new Error(data.error);
         if (modeToTest === 'image') {
-          if (typeof data?.image_url !== 'string' || !data.image_url.startsWith('https://')) throw new Error('O gerador não retornou uma URL de imagem válida.');
+          if (typeof data?.image_url !== 'string' || !(data.image_url.startsWith('https://') || data.image_url.startsWith('data:image/'))) throw new Error('O gerador não retornou uma imagem válida.');
           if (typeof data?.prompt_model !== 'string' || typeof data?.model !== 'string') throw new Error('A imagem foi gerada, mas os dois modelos não foram confirmados na resposta.');
           updateProbe(id, 'ok', 'Os modelos de interpretação e geração responderam. A imagem precisa ser aberta para inspeção visual.');
           return;
@@ -999,6 +1000,7 @@ export default function App() {
 
     updateProbe('github', 'running', 'Consultando o estado da Edge Function do GitHub…');
     try {
+      recordApiRequest('github');
       const { data, error } = await supabase.functions.invoke('github-integration', { body: { action: 'status' } });
       if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
       if (typeof data?.connected !== 'boolean') throw new Error(data?.error ?? 'Resposta inesperada da integração GitHub.');
