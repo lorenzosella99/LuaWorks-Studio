@@ -860,7 +860,10 @@ export default function App() {
         ? `> **Modo automático:** ${modes.find((item) => item.id === resolvedMode)?.label ?? 'Geral e Código'}\n\n`
         : '';
       if (data?.image_url && typeof data.image_url === 'string') {
-        const imageMarkdown = `${modeNotice}![Imagem gerada](${data.image_url})`;
+        const imageCaption = typeof data.answer === 'string' && data.answer.trim()
+          ? data.answer.trim() + '\n\n'
+          : 'Prontinho! Sua imagem ficou logo abaixo. ✨\n\n';
+        const imageMarkdown = `${modeNotice}${imageCaption}![Imagem gerada](${data.image_url})`;
         const assistantMessage = await persistMessage(conversationId, 'assistant', imageMarkdown);
         setMessages((items) => [...items, assistantMessage]);
       } else {
