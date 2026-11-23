@@ -8,6 +8,7 @@ const STORM_MODEL = "qwen/qwen3.8-27b";
 const CODE_MODEL = "openai/gpt-oss-120b";
 const PERSONA_MODEL = "openrouter/free";
 const IMAGE_MODEL = "black-forest-labs/flux.1-schnell";
+const IMAGE_PROMPT_MODEL = STORM_MODEL;
 const CHAT_PROMPT = "Você é o AI Workbench, um assistente conversacional útil, natural e atento ao contexto. Responda no idioma usado pelo usuário. Em conversas comuns, seja direto, simpático e proporcional ao pedido; uma saudação como 'bom dia' merece uma saudação breve, não um texto longo. Não gere código, blocos de código, arquivos ou projetos a menos que o usuário peça isso claramente. Para perguntas, explique normalmente e use exemplos simples quando ajudarem. Use o histórico fornecido para manter continuidade e respeitar os requisitos já mencionados. Não invente fatos, ações ou testes executados.";
 const CODE_PROMPT = "Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Quando o usuário pedir código, entregue código completo e executável, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
 const STORM_PROMPT = "Você é especialista em microcontroladores vanilla de Stormworks. REGRAS: cada bloco Lua tem no máximo 4096 caracteres; use somente callbacks onTick() e onDraw(); use apenas APIs input, output, screen, property, map, async, math, table e string. Nunca use os, io, require, package, debug, filesystem, rede ou bibliotecas externas. Não invente APIs, canais ou portas. Entregue código completo, explique canais de entrada/saída, valide divisões por zero e inicialização. Não prometa ausência de bugs; inclua testes. Retorne no máximo um bloco Markdown Lua com até 4096 caracteres. Se foi pedido código inteiro, nunca retorne trecho.";
@@ -168,19 +169,40 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
 }
 
 async function image(messages: Array<{role:"user"|"assistant";content:string}>) {
-  const key = Deno.env.get("POLLINATIONS_API_KEY");
-  if (!key) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
-  const latest = messages[messages.length - 1]?.content ?? "";
-  const context = messages.slice(-8, -1)
-    .map((m) => (m.role === "user" ? "Pedido anterior: " : "Contexto anterior: ") + m.content)
-    .join("\n");
-  const prompt = context
-    ? "Use o contexto visual abaixo para manter continuidade entre pedidos. Priorize a instrução mais recente.\n\nCONTEXTO:\n" + context + "\n\nPEDIDO ATUAL:\n" + latest
+  const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
+  const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
+  if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
+  if (!promptKey) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY para o modelo de interpretação visual.");
+
+  const latest = messages[messages.length - 1]?.content?.trim() ?? "";
+  if (!latest) throw new Error("Descreva a imagem que deseja gerar.");
+
+  // Só reutiliza o histórico quando o usuário pede explicitamente continuidade visual.
+  const asksForContinuity = /\b(?:mesm[oa]s?\s+(?:personagem|pessoa|rosto|roupa|cen[aá]rio|estilo|rob[oô]|animal)|continue|continua(?:r)?|continua[cç][aã]o|imagem\s+anterior|foto\s+anterior|igual\s+[àa]\s+anterior|mantenha\s+(?:o|a)\s+(?:mesm[oa]|visual|apar[eê]ncia)|n[aã]o\s+mude)\b/i.test(latest);
+  const context = asksForContinuity
+    ? messages.slice(-7, -1).map((m) => (m.role === "user" ? "Pedido anterior: " : "Referência anterior: ") + m.content).join("\n").slice(-5000)
+    : "";
+
+  const visualBrief = context
+    ? "CONTEXTO PARA CONTINUIDADE VISUAL (use apenas o que for relevante):\n" + context + "\n\nNOVO PEDIDO, QUE TEM PRIORIDADE:\n" + latest
     : latest;
+
+  // Modelo 1: interpreta o pedido e o converte em uma descrição visual precisa.
+  const refinedPrompt = await openAI(GROQ, promptKey, IMAGE_PROMPT_MODEL, [
+    {
+      role: "system",
+      content: "Você é diretor de arte e especialista em transformar pedidos em prompts para modelos de geração de imagem. Interprete com cuidado pedidos específicos, incomuns, aleatórios ou cheios de restrições. Preserve todos os elementos explícitos: quantidade de personagens/objetos, aparência, posição, ações, cenário, época, composição, perspectiva, enquadramento, paleta, iluminação, materiais, estilo e proporção. Não troque, omita ou invente detalhes que contradigam o pedido. Quando faltar informação, complete apenas o necessário para uma imagem coerente. Se houver texto que precise aparecer na imagem, mantenha-o literalmente entre aspas e peça para ser escrito exatamente assim. Se o pedido for surreal ou impossível, represente-o visualmente sem normalizá-lo. Retorne somente um prompt visual detalhado, direto e pronto para o gerador de imagens, preferencialmente em inglês. Não explique suas decisões, não inclua alternativas nem comentários."
+    },
+    { role: "user", content: visualBrief }
+  ], 0.25, {}, 1800);
+
+  if (!refinedPrompt.trim()) throw new Error("O modelo de interpretação visual não retornou um prompt.");
+
+  // Modelo 2: gera a imagem usando o prompt interpretado pelo primeiro modelo.
   const res = await fetch("https://gen.pollinations.ai/v1/images/generations", {
     method: "POST",
-    headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, size: "1024x1024", response_format: "url" }),
+    headers: { Authorization: "Bearer " + imageKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: IMAGE_MODEL, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
   });
   const raw = await res.text();
   let data: any = {};
@@ -188,7 +210,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>) 
   if (!res.ok) throw new Error("Pollinations HTTP " + res.status + ": " + errText(data.error ?? raw.slice(0, 350)));
   const url = data?.data?.[0]?.url;
   if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou uma URL pública válida.");
-  return url;
+  return { url, refinedPrompt };
 }
 
 Deno.serve(async (req: Request) => {
@@ -215,7 +237,10 @@ Deno.serve(async (req: Request) => {
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
-    if (mode === "image") return json({ image_url: await image(messages), model: IMAGE_MODEL, selected_mode: mode, effort: "n/a" });
+    if (mode === "image") {
+      const generated = await image(messages);
+      return json({ image_url: generated.url, model: IMAGE_MODEL, prompt_model: IMAGE_PROMPT_MODEL, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
+    }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
       const key = Deno.env.get("PERSONALITY_API_KEY");
