@@ -14,6 +14,17 @@ const ALLOWED_EMAIL = 'lorenzosella99@gmail.com';
 const ALLOWED_USERNAME = 'loren';
 
 type ApiProbe = { id: string; title: string; status: 'idle' | 'running' | 'ok' | 'error'; detail: string };
+type DailyApiUsage = { date: string; counts: Record<string, number> };
+const API_USAGE_KEY = 'ai-workbench-api-usage-v1';
+function loadDailyApiUsage(): DailyApiUsage {
+  const today = new Date().toLocaleDateString('en-CA');
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(API_USAGE_KEY) || 'null') as DailyApiUsage | null;
+    return saved?.date === today && saved.counts ? saved : { date: today, counts: {} };
+  } catch {
+    return { date: today, counts: {} };
+  }
+}
 type EffortLevel = 'low' | 'medium' | 'ultra';
 type EffortSettings = { general: EffortLevel; stormworks: EffortLevel; personality: EffortLevel };
 
@@ -270,6 +281,7 @@ export default function App() {
   const [githubStatus, setGithubStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
   const [apiProbes, setApiProbes] = useState<ApiProbe[]>([]);
   const [apiTestBusy, setApiTestBusy] = useState(false);
+  const [dailyApiUsage, setDailyApiUsage] = useState<DailyApiUsage>(() => loadDailyApiUsage());
   const [githubToken, setGithubToken] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
   const [saveModal, setSaveModal] = useState<{ code: string; language: string } | null>(null);
@@ -325,6 +337,16 @@ export default function App() {
     setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const recordApiRequest = useCallback((apiId: string) => {
+    setDailyApiUsage((current) => {
+      const today = new Date().toLocaleDateString('en-CA');
+      const base = current.date === today ? current : { date: today, counts: {} };
+      const next = { date: today, counts: { ...base.counts, [apiId]: (base.counts[apiId] ?? 0) + 1 } };
+      try { window.localStorage.setItem(API_USAGE_KEY, JSON.stringify(next)); } catch { /* mantém a contagem na sessão */ }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -823,6 +845,7 @@ export default function App() {
       }
 
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
+      recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
         body: { mode, effortByMode, imageProfile, messages: history },
       });
@@ -926,6 +949,7 @@ export default function App() {
     ) => {
       updateProbe(id, 'running', 'Enviando conversa de teste com mensagens anteriores…');
       try {
+        recordApiRequest(modeToTest);
         const { data, error } = await supabase!.functions.invoke('chat-ai', { body: { mode: modeToTest, messages: messagesToSend } });
         if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
         if (typeof data?.error === 'string') throw new Error(data.error);
@@ -1372,12 +1396,26 @@ export default function App() {
               <button className="primary-button api-test-button" type="button" onClick={() => { void testAllApis(); }} disabled={apiTestBusy}>
                 {apiTestBusy ? 'Testando integrações…' : 'Testar todas as APIs'}
               </button>
-              <div className="api-test-warning">O teste de imagens pode consumir créditos do provedor. Os testes usam solicitações reais e só começam quando você clicar.</div>
+              <div className="api-test-warning">O teste de imagens pode consumir créditos do provedor. Os testes usam solicitações reais e só começam quando você clicar. A contagem diária registra chamadas iniciadas pelo Workbench neste navegador; não é o contador oficial de consumo do provedor.</div>
+              <div className="api-test-warning">Limites oficiais da conta: <a href="https://console.groq.com/settings/limits" target="_blank" rel="noreferrer">Groq</a> · <a href="https://openrouter.ai/activity" target="_blank" rel="noreferrer">OpenRouter</a> · <a href="https://gen.pollinations.ai/docs" target="_blank" rel="noreferrer">Pollinations</a>.</div>
               {apiProbes.length > 0 && <div className="api-test-list">
                 {apiProbes.map((probe) => (
                   <div className="api-test-row" key={probe.id}>
                     <span className={'api-test-dot api-test-dot--' + probe.status} />
-                    <div><strong>{probe.title}</strong><span>{probe.detail}</span></div>
+                    <div>
+                      <strong>{probe.title}</strong>
+                      <span>{probe.detail}</span>
+                      <span className="api-usage-meta">
+                        Hoje neste dispositivo: <b>{dailyApiUsage.counts[probe.id] ?? 0}</b> chamada(s)
+                        {probe.id === 'general' || probe.id === 'stormworks'
+                          ? ' · Groq: limites exatos da chave no painel do provedor'
+                          : probe.id === 'image'
+                            ? ' · Pollinations/OpenRouter: limites variam por conta e modelo'
+                            : probe.id === 'personality'
+                              ? ' · OpenRouter: gratuito geralmente 20/min e 50/dia; depende da conta'
+                              : probe.id === 'github' ? ' · Limite conforme token/plano GitHub' : ''}
+                      </span>
+                    </div>
                     <small>{probe.status === 'running' ? 'Testando' : probe.status === 'ok' ? 'OK' : probe.status === 'error' ? 'Falhou' : 'Pendente'}</small>
                   </div>
                 ))}
