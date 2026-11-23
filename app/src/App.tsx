@@ -17,7 +17,8 @@ type ApiProbe = { id: string; title: string; status: 'idle' | 'running' | 'ok' |
 type DailyApiUsage = { date: string; counts: Record<string, number> };
 const API_USAGE_KEY = 'ai-workbench-api-usage-v1';
 function loadDailyApiUsage(): DailyApiUsage {
-  const today = new Date().toLocaleDateString('en-CA');
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   try {
     const saved = JSON.parse(window.localStorage.getItem(API_USAGE_KEY) || 'null') as DailyApiUsage | null;
     return saved?.date === today && saved.counts ? saved : { date: today, counts: {} };
@@ -341,7 +342,8 @@ export default function App() {
 
   const recordApiRequest = useCallback((apiId: string) => {
     setDailyApiUsage((current) => {
-      const today = new Date().toLocaleDateString('en-CA');
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const base = current.date === today ? current : { date: today, counts: {} };
       const next = { date: today, counts: { ...base.counts, [apiId]: (base.counts[apiId] ?? 0) + 1 } };
       try { window.localStorage.setItem(API_USAGE_KEY, JSON.stringify(next)); } catch { /* mantém a contagem na sessão */ }
@@ -1408,7 +1410,7 @@ export default function App() {
                       <strong>{probe.title}</strong>
                       <span>{probe.detail}</span>
                       <span className="api-usage-meta">
-                        Hoje neste dispositivo: <b>{dailyApiUsage.counts[probe.id] ?? 0}</b> chamada(s)
+                        Hoje neste dispositivo: <b>{(dailyApiUsage.counts[probe.id] ?? 0) + (probe.id === 'general' ? (dailyApiUsage.counts.auto ?? 0) : 0)}</b> chamada(s)
                         {probe.id === 'general' || probe.id === 'stormworks'
                           ? ' · Groq: limites exatos da chave no painel do provedor'
                           : probe.id === 'image'
