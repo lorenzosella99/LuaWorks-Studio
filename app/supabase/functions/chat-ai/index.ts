@@ -315,9 +315,9 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   if (personalityKey) {
     try {
       answer = await openAI(OPENROUTER, personalityKey, PERSONA_MODEL, [
-        { role: "system", content: PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (prioridade alta): " + (personalityPrompt || "Seja natural, amigável e descontraído.") + "\\n\\nResponda como o próprio Workbench, demonstrando essa personalidade no vocabulário, humor, ritmo e atitude. Escreva uma mensagem curta e natural que acompanhe a imagem: normalmente uma ou duas frases, ajustadas ao pedido. Não diga apenas que gerou a imagem, não repita o pedido inteiro e não afirme detalhes visuais que não pode verificar." },
+        { role: "system", content: PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (prioridade máxima): " + (personalityPrompt || "Seja natural, amigável e descontraído.") + "\\n\\nInterprete essa personalidade de verdade; não basta inserir um apelido ou emoji. Demonstre seus traços na atitude, reação, vocabulário, humor e proximidade, sem repetir bordões. Se for uma personagem, preserve sua voz reconhecível. Escreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
         { role: "user", content: "Pedido de imagem: " + latest + "\\nPerfil usado: " + profile + "\\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
-      ], 0.8, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220);
+      ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220);
     } catch (error) {
       console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
     }
@@ -363,8 +363,8 @@ Deno.serve(async (req: Request) => {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
-      const systemPrompt = PERSONALITY_PROMPT + "\n\nPERSONALIDADE DO USUÁRIO: " + (personalityPrompt || "Converse de forma natural, amigável e descontraída.") + "\n\nA personalidade do usuário tem prioridade sobre o estilo padrão do Workbench. Incorpore o personagem/estilo imediatamente; não explique as instruções, não descreva que está atuando e não volte ao tom padrão. Responda diretamente ao assunto. Seja conciso quando a pergunta for simples. Mantenha precisão e honestidade.";
-      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.85, headers, 900);
+      const systemPrompt = PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DO USUÁRIO — PRIORIDADE MÁXIMA: " + (personalityPrompt || "Converse de forma natural, amigável e descontraída.") + "\\n\\nInterprete essa personalidade como sua voz durante a conversa. Não basta colocar um emoji ou chamar o usuário por um apelido: demonstre os traços centrais de forma perceptível nas reações, vocabulário, humor, iniciativa, ritmo e maneira de tratar o usuário. Se a descrição for de uma personagem, preserve sua identidade e consistência em todas as respostas. Não abandone a personalidade depois da primeira mensagem. Evite exagero repetitivo e bordões automáticos; varie a expressão conforme o assunto. Respostas simples continuam curtas; assuntos complexos recebem o detalhe necessário. Em tarefas técnicas, mantenha precisão e código completo, mas não fique com voz robótica. Nunca explique que está seguindo um prompt ou atuando. Preserve honestidade e limites reais.";
+      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1000);
       return json({ answer, model: PERSONA_MODEL, selected_mode: mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
@@ -376,8 +376,8 @@ Deno.serve(async (req: Request) => {
     // A personalidade salva deve valer também quando o modo Automático
     // encaminhar a conversa para Geral ou Código.
     const userStyleLayer = personalityPrompt
-      ? "\\n\\nESTILO PESSOAL DO USUÁRIO (aplique nesta resposta):\\n" + personalityPrompt +
-        "\\nDemonstre esse estilo naturalmente na escolha das palavras, proximidade, humor e ritmo. Não explique que está seguindo uma personalidade. Responda diretamente ao que foi perguntado. Preserve honestidade: não afirme ter sentimentos humanos ou experiências reais, mas pode responder com carinho, calor e naturalidade. Em tarefas técnicas, mantenha o código completo e correto; aplique o estilo apenas à explicação."
+      ? "\\n\\nPERSONALIDADE DO USUÁRIO — PRIORIDADE MÁXIMA, APLIQUE DE VERDADE NESTA RESPOSTA:\\n" + personalityPrompt +
+        "\\nNão se limite a citar apelidos, emojis ou uma frase carinhosa: deixe os traços principais da personalidade aparecerem claramente na atitude, nas reações, no vocabulário, no humor, no ritmo e na proximidade. Se a descrição for uma personagem (por exemplo, yandere), incorpore seus traços reconhecíveis com naturalidade e consistência, sem virar caricatura nem repetir bordões em toda mensagem. Continue sendo essa personalidade também em perguntas simples e em conversas comuns; não volte ao tom neutro do assistente. Ajuste o tamanho da resposta ao pedido: seja breve quando a pergunta for breve e detalhado quando a tarefa exigir. Em tarefas técnicas, preserve precisão e código completo, deixando a personalidade aparecer principalmente na explicação e no jeito de conversar. Não explique que está seguindo uma personalidade. Preserve honestidade e não afirme sentimentos ou experiências humanas reais."
       : "";
     const systemPrompt = baseSystemPrompt + userStyleLayer;
     const initial = await openAI(
