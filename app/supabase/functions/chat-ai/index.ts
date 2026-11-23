@@ -372,7 +372,14 @@ Deno.serve(async (req: Request) => {
 
     const latestPrompt = messages[messages.length - 1].content;
     const wantsCode = isCodeRequest(latestPrompt);
-    const systemPrompt = wantsCode ? CODE_PROMPT : CHAT_PROMPT;
+    const baseSystemPrompt = wantsCode ? CODE_PROMPT : CHAT_PROMPT;
+    // A personalidade salva deve valer também quando o modo Automático
+    // encaminhar a conversa para Geral ou Código.
+    const userStyleLayer = personalityPrompt
+      ? "\\n\\nESTILO PESSOAL DO USUÁRIO (aplique nesta resposta):\\n" + personalityPrompt +
+        "\\nDemonstre esse estilo naturalmente na escolha das palavras, proximidade, humor e ritmo. Não explique que está seguindo uma personalidade. Responda diretamente ao que foi perguntado. Preserve honestidade: não afirme ter sentimentos humanos ou experiências reais, mas pode responder com carinho, calor e naturalidade. Em tarefas técnicas, mantenha o código completo e correto; aplique o estilo apenas à explicação."
+      : "";
+    const systemPrompt = baseSystemPrompt + userStyleLayer;
     const initial = await openAI(
       GROQ,
       codeKey,
