@@ -81,6 +81,23 @@ function getCodeText(node: ReactNode): string {
   return '';
 }
 
+function GeneratedImage({ src, alt }: { src: string; alt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="generated-image-trigger" onClick={() => setOpen(true)} aria-label="Ampliar imagem">
+        <img className="generated-image" src={src} alt={alt} loading="lazy" />
+      </button>
+      {open && (
+        <div className="image-viewer" role="dialog" aria-modal="true" aria-label="Imagem ampliada" onClick={() => setOpen(false)}>
+          <button type="button" className="image-viewer-close" onClick={() => setOpen(false)} aria-label="Fechar imagem">×</button>
+          <img src={src} alt={alt} className="image-viewer-full" onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function MarkdownMessage({ content, mode, onSaveCode, onToast }: Props) {
   const components: Components = {
     pre({ children }) {
@@ -100,11 +117,7 @@ export default function MarkdownMessage({ content, mode, onSaveCode, onToast }: 
     },
     img({ src, alt }) {
       if (!src) return null;
-      return (
-        <a className="generated-image-link" href={src} target="_blank" rel="noreferrer">
-          <img className="generated-image" src={src} alt={alt ?? 'Imagem gerada'} loading="lazy" />
-        </a>
-      );
+      return <GeneratedImage src={src} alt={alt ?? 'Imagem gerada'} />;
     },
     table({ children }) {
       return <div className="markdown-table-wrap"><table>{children}</table></div>;
