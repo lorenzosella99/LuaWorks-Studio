@@ -193,9 +193,9 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
     : latest;
 
   const lowerPrompt = latest.toLowerCase();
-  const automaticProfile: ImageProfile = /\\b(foto|fotografia|realista|realismo|fotorrealista|photoreal|realistic|retrato real)\\b/i.test(lowerPrompt)
+  const automaticProfile: ImageProfile = /\b(foto|fotografia|realista|realismo|fotorrealista|photoreal|realistic|retrato real)\b/i.test(lowerPrompt)
     ? "realism"
-    : /\\b(aleat[oó]ri[oa]|surreal|absurd[oa]|engra[cç]ad[oa]|maluc[oa]|criativ[oa]|imagin[eá]ri[oa]|fant[aá]stic[oa])\\b/i.test(lowerPrompt)
+    : /\b(aleat[oó]ri[oa]|surreal|absurd[oa]|engra[cç]ad[oa]|maluc[oa]|criativ[oa]|imagin[eá]ri[oa]|fant[aá]stic[oa])\b/i.test(lowerPrompt)
       ? "creative"
       : "precision";
   const profile: ImageProfile = requestedProfile === "precision" || requestedProfile === "creative" || requestedProfile === "realism"
@@ -219,12 +219,17 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
 
   if (!refinedPrompt.trim()) throw new Error("O modelo de interpretação visual não retornou um prompt.");
 
-  // Modelo 2: gera a imagem usando o prompt interpretado pelo primeiro modelo.
+  // No modo precisão, mantém o pedido original como fonte de verdade, sem depender só da reescrita da IA.
+  const finalImagePrompt = profile === "precision"
+    ? "PEDIDO ORIGINAL — FONTE DE VERDADE. Preserve todos os detalhes explícitos: objetos, quantidades, cores, posições, orientação, escala, materiais, ações e relações espaciais. Não simplifique, substitua, omita nem invente elementos. Se a descrição refinada divergir, siga o pedido original.\\n\\nPEDIDO ORIGINAL (preservar literalmente):\\n" + latest + "\\n\\nDESCRIÇÃO VISUAL ESTRUTURADA (somente para esclarecer):\\n" + refinedPrompt + "\\n\\nCHECAGEM FINAL: confira cada objeto, número, cor, posição e ação do pedido original."
+    : "PEDIDO ORIGINAL:\\n" + latest + "\\n\\nPROMPT VISUAL REFINADO:\\n" + refinedPrompt;
+
+  // Modelo 2: gera com o pedido original e a interpretação estruturada.
   const generateWith = async (model: string) => {
     const response = await fetch("https://gen.pollinations.ai/v1/images/generations", {
       method: "POST",
       headers: { Authorization: "Bearer " + imageKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
+      body: JSON.stringify({ model, prompt: finalImagePrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
     });
     const raw = await response.text();
     let data: any = {};
