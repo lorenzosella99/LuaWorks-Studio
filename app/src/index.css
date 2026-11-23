@@ -457,3 +457,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .image-viewer-close { position: absolute; top: 16px; right: 20px; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.25); border-radius: 50%; background: rgba(30,30,30,.8); color: white; font-size: 30px; line-height: 1; cursor: pointer; }
 
 .topbar-tool-button{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:#1d1d1d;color:#aaa;font-size:10px;cursor:pointer}.topbar-tool-button:hover{color:#eee;background:#252525}
+
+
+/* Preferência de personalidade persistente */
+.personality-preference-section { gap: 10px; }
+.personality-preference-input { width: 100%; min-height: 112px; resize: vertical; padding: 11px 12px; color: #dedede; background: #121212; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; outline: none; font: 11px/1.55 'Manrope', sans-serif; }
+.personality-preference-input:focus { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.personality-preference-input::placeholder { color: #686868; }
+.personality-preference-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #777; font-size: 9px; }
