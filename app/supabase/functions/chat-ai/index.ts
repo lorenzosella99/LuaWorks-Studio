@@ -161,14 +161,18 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   const key = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!key) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY no servidor.");
   const context = messages.map((m) => ({ role: m.role, content: m.content }));
-  let answer = await openAI(GROQ, key, STORM_MODEL, [{ role: "system", content: STORM_PROMPT }, ...context], 0.12);
-  answer = await reviewAndImprove(GROQ, key, STORM_MODEL, STORM_PROMPT, messages, answer, effort, {}, "stormworks");
+  // O Groq limita este modelo a 1.000 tokens de saída por minuto nesta chave.
+  // Evita múltiplas rodadas de revisão que estouram o limite mesmo em pedidos curtos.
+  let answer = await openAI(GROQ, key, STORM_MODEL, [
+    { role: "system", content: STORM_PROMPT + "\\n\\nPriorize uma solução completa, mas compacta. Retorne somente o código Lua e instruções essenciais." },
+    ...context,
+  ], 0.12, {}, 700);
   let issues = luaIssues(answer);
   if (issues.length) {
     answer = await openAI(GROQ, key, STORM_MODEL, [
       { role: "system", content: STORM_PROMPT + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
       { role: "user", content: "PEDIDO ORIGINAL:\n" + messages[messages.length - 1].content + "\n\nRESPOSTA A CORRIGIR:\n" + answer + "\n\nPROBLEMAS:\n" + issues.join("\n") },
-    ], 0.05);
+    ], 0.05, {}, 700);
     issues = luaIssues(answer);
   }
   if (issues.length) throw new Error("A verificação estática do Stormworks ainda encontrou problemas: " + issues.join(" "));
