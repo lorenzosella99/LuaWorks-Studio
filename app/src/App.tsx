@@ -844,6 +844,22 @@ export default function App() {
     let conversationId = activeId;
     let wasNew = false;
     try {
+      // O estado local pode conservar o ID de uma conversa excluída ou antiga.
+      // Confirme a propriedade no banco antes de tentar inserir a mensagem.
+      if (conversationId) {
+        const { data: ownedConversation, error: verifyError } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('id', conversationId)
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (verifyError) throw new Error('Não foi possível validar a conversa atual: ' + verifyError.message);
+        if (!ownedConversation) {
+          conversationId = null;
+          setActiveId(null);
+          setMessages([]);
+        }
+      }
       if (!conversationId) {
         const created = await createConversation();
         if (!created) throw new Error('Não foi possível criar uma conversa.');
@@ -888,7 +904,11 @@ export default function App() {
       }
       await loadConversations();
     } catch (error) {
-      let message = error instanceof Error ? error.message : 'Ocorreu um erro ao enviar sua mensagem.';
+      let message = error instanceof Error
+        ? error.message
+        : error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+          ? String((error as { message: string }).message)
+          : 'Ocorreu um erro ao enviar sua mensagem.';
       const context = error && typeof error === 'object' && 'context' in error ? (error as { context?: unknown }).context : undefined;
       if (context instanceof Response) {
         try {
