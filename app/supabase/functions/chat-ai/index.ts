@@ -179,7 +179,6 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
   const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
-  if (!promptKey) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY para o modelo de interpretação visual.");
 
   const latest = messages[messages.length - 1]?.content?.trim() ?? "";
   if (!latest) throw new Error("Descreva a imagem que deseja gerar.");
@@ -210,16 +209,28 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
       ? "MODO CRIATIVIDADE: mantenha a ideia principal e os elementos obrigatórios, mas explore uma interpretação visual original, divertida, inesperada e imaginativa. Não contradiga instruções explícitas."
       : "MODO REALISMO FOTOGRÁFICO EXTREMO: a imagem deve ser indistinguível de uma fotografia capturada por uma câmera profissional, NÃO uma ilustração, pintura, concept art ou render 3D. Use anatomia e proporções fisicamente corretas, geometria mecânica plausível, materiais com microtexturas imperfeitas, desgaste natural, reflexos e sombras coerentes, iluminação realista, exposição e balanço de branco naturais, lente fotográfica real, perspectiva e profundidade de campo ópticas. Evite contornos artificiais, superfícies plásticas, nitidez excessiva, simetria perfeita, aparência de videogame e borrões pictóricos. Se o pedido descrever veículo ou máquina, respeite construção mecânica real, rotor/pás, cockpit, trem de pouso e conexões estruturais plausíveis. A cena deve parecer uma fotografia documental/editorial, com detalhes nítidos no assunto principal e fundo naturalmente desfocado quando apropriado.";
 
-  // Modelo 1: interpreta o pedido conforme o perfil escolhido.
-  const refinedPrompt = await openAI(GROQ, promptKey, IMAGE_PROMPT_MODEL, [
-    {
-      role: "system",
-      content: "Você é um diretor de arte e tradutor de instruções visuais. " + profileInstruction + " Preserve os detalhes essenciais do pedido, descreva sujeitos e quantidades, aparência, ações, relações espaciais, ambiente, câmera, composição, iluminação e estilo. Para posições, seja explícito: acima, abaixo, dentro, fora, à esquerda e à direita. Não transforme pedidos simples em cenas genéricas. Se houver texto, preserve a grafia literal. Organize em: SUBJECTS AND COUNT; APPEARANCE; ACTIONS AND SPATIAL RELATIONSHIPS; ENVIRONMENT; CAMERA AND COMPOSITION; LIGHTING AND STYLE; MUST INCLUDE; MUST NOT INCLUDE. Retorne somente o prompt final."
-    },
-    { role: "user", content: visualBrief }
-  ], 0.25, {}, 1800);
-
-  if (!refinedPrompt.trim()) throw new Error("O modelo de interpretação visual não retornou um prompt.");
+  // O interpretador melhora pedidos complexos, mas nunca pode bloquear a geração.
+  // Se o Groq atingir limite (HTTP 429), estiver indisponível ou sem chave,
+  // o gerador recebe a descrição original diretamente.
+  let refinedPrompt = visualBrief;
+  let promptInterpreter = "original";
+  if (promptKey) {
+    try {
+      const interpreted = await openAI(GROQ, promptKey, IMAGE_PROMPT_MODEL, [
+        {
+          role: "system",
+          content: "Você é um diretor de arte e tradutor de instruções visuais. " + profileInstruction + " Preserve os detalhes essenciais do pedido, descreva sujeitos e quantidades, aparência, ações, relações espaciais, ambiente, câmera, composição, iluminação e estilo. Para posições, seja explícito: acima, abaixo, dentro, fora, à esquerda e à direita. Não transforme pedidos simples em cenas genéricas. Se houver texto, preserve a grafia literal. Organize em: SUBJECTS AND COUNT; APPEARANCE; ACTIONS AND SPATIAL RELATIONSHIPS; ENVIRONMENT; CAMERA AND COMPOSITION; LIGHTING AND STYLE; MUST INCLUDE; MUST NOT INCLUDE. Retorne somente o prompt final."
+        },
+        { role: "user", content: visualBrief }
+      ], 0.25, {}, 900);
+      if (interpreted.trim()) {
+        refinedPrompt = interpreted.trim();
+        promptInterpreter = IMAGE_PROMPT_MODEL;
+      }
+    } catch (error) {
+      console.warn("chat-ai: interpretador visual indisponível; usando pedido original:", errText(error));
+    }
+  }
 
   // No modo precisão, mantém o pedido original como fonte de verdade, sem depender só da reescrita da IA.
   const finalImagePrompt = profile === "precision"
@@ -293,7 +304,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
       url = await generateWith(usedModel);
     }
   }
-  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile };
+  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile, promptInterpreter };
 }
 
 Deno.serve(async (req: Request) => {
@@ -322,7 +333,7 @@ Deno.serve(async (req: Request) => {
 
     if (mode === "image") {
       const generated = await image(messages, body.imageProfile);
-      return json({ image_url: generated.url, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: IMAGE_PROMPT_MODEL, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
+      return json({ image_url: generated.url, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
