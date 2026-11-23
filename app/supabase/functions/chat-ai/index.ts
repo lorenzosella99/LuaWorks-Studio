@@ -68,7 +68,7 @@ function resolveMode(prompt: string): WorkMode {
   if (/stormworks|microcontrolador|micro\s*controlador|\bonTick\b|\bonDraw\b|lua\s+vanilla/i.test(prompt)) return "stormworks";
   // Descrições visuais naturais também acionam imagens no modo automático,
   // mesmo sem verbos como "gere" ou "crie". Ex.: "um avião com o eclipse de fundo".
-  if (/(?:gere|gerar|crie|criar|desenhe|desenhar|produza|produzir)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital|\b(?:de fundo|ao fundo|no fundo|in the background|background)\b/i.test(prompt)) return "image";
+  if (/(?:gere|gerar|crie|criar|desenhe|desenhar|produza|produzir)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital|\b(?:de fundo|ao fundo|no fundo|in the background|background|em cima de|sobre|ao lado de|atr[aá]s de|na frente de|dentro de|em volta de|ao redor de|cada uma|cada um)\b/i.test(prompt)) return "image";
   if (/modo personalidade|personalidade|interprete|finja\s+ser|aja\s+como|roleplay|converse\s+como|estilo\s+de\s+fala/i.test(prompt)) return "personality";
   return "general";
 }
@@ -317,12 +317,16 @@ Deno.serve(async (req: Request) => {
     const requestedMode = body.mode;
     if (!["auto", "general", "stormworks", "image", "personality"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
     const messages: Array<{role:"user"|"assistant";content:string}> = [];
+    // Evita reenviar imagens Base64 e históricos gigantes ao modelo de texto.
+    // O pedido atual é preservado; o contexto anterior fica limitado às 8 mensagens mais recentes.
+    const recentItems = body.messages.slice(-8);
     let total = 0;
-    for (const item of body.messages.slice(-40)) {
+    for (const item of recentItems) {
       if ((item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") continue;
-      const content = item.content.slice(0, 16000);
+      const withoutInlineImages = item.content.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=\s]+/g, "[imagem anexada omitida do histórico]");
+      const content = withoutInlineImages.slice(-3500);
       total += content.length;
-      if (total > 90000) return json({ error: "Histórico muito longo. Inicie conversa nova." }, 413);
+      if (total > 14000) continue;
       messages.push({ role: item.role, content });
     }
     if (!messages.length || messages[messages.length - 1].role !== "user") return json({ error: "A última mensagem deve ser do usuário." }, 400);
