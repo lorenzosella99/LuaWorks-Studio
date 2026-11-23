@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Terminal } from 'lucide-react';
 import { getFiles } from './localStore';
 type Line = { input?: string; output: string };
 export default function TerminalTool() {
   const [command,setCommand]=useState(''); const [lines,setLines]=useState<Line[]>([{output:'AI Workbench Local Shell · ambiente restrito\nDigite help para ver os comandos disponíveis.'}]);
-  function execute(event: React.FormEvent) { event.preventDefault(); const raw=command.trim(); if(!raw)return; const [cmd,...args]=raw.split(' '); const rest=args.join(' '); let output=''; const files=getFiles();
+  function execute(event: FormEvent) { event.preventDefault(); const raw=command.trim(); if(!raw)return; const [cmd,...args]=raw.split(' '); const rest=args.join(' '); let output=''; const files=getFiles();
     switch(cmd.toLowerCase()) { case 'help': output='Comandos disponíveis:\nhelp · date · pwd · ls · cat NOME · echo TEXTO · clear\nEste terminal não executa comandos do sistema operacional.'; break; case 'date': output=new Date().toLocaleString('pt-BR'); break; case 'pwd': output='/workbench/local'; break; case 'ls': output=files.length?files.map(f=>f.name).join('\n'):'(nenhum arquivo salvo)'; break; case 'cat': { const file=files.find(f=>f.name===rest); output=file?file.content:'Arquivo não encontrado. Use ls para listar.'; break; } case 'echo': output=rest; break; case 'clear': setLines([]); setCommand(''); return; default: output='Comando não reconhecido. Digite help. Não são permitidos comandos arbitrários.'; }
     setLines(current=>[...current,{input:raw,output}].slice(-80)); setCommand('');
   }
