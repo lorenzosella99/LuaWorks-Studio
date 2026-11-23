@@ -124,9 +124,24 @@ export default function MarkdownMessage({ content, mode, onSaveCode, onToast }: 
     },
   };
 
+  // Imagens geradas chegam como data URLs Base64 grandes. Renderize-as
+  // diretamente para evitar que o parser Markdown processe o Base64 como link.
+  const embeddedImage = content.match(/!\[([^\]]*)\]\((data:image\/(?:png|jpe?g|webp|gif);base64,[^)]+)\)/i);
+  if (embeddedImage) {
+    return (
+      <div className="markdown-content">
+        <GeneratedImage src={embeddedImage[2]} alt={embeddedImage[1] || 'Imagem gerada'} />
+      </div>
+    );
+  }
+
   return (
     <div className="markdown-content">
-      <ReactMarkdown\n        remarkPlugins={[remarkGfm]}\n        components={components}\n        urlTransform={(url) => /^data:image\\/(?:png|jpe?g|webp|gif);base64,/i.test(url) ? url : defaultUrlTransform(url)}\n      >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={(url) => /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(url) ? url : defaultUrlTransform(url)}
+      >
         {content}
       </ReactMarkdown>
     </div>
