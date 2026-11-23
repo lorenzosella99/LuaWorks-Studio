@@ -767,7 +767,7 @@ export default function App() {
     const { data, error } = await supabase.from('conversations').insert({
       user_id: session.user.id,
       title: 'Nova conversa',
-      mode,
+      mode: 'auto',
     }).select('*').single();
     if (error) {
       showToast(`Não foi possível criar a conversa: ${error.message}`);
@@ -776,6 +776,7 @@ export default function App() {
     const created = data as Conversation;
     setConversations((previous) => [created, ...previous]);
     setActiveId(created.id);
+    setMode('auto');
     setMessages([]);
     setView('chat');
     setSidebarOpen(false);
