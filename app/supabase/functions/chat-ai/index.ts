@@ -180,7 +180,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   return answer + "\n\n_Análise estática Lua aprovada: limite de 4.096 caracteres por bloco, APIs bloqueadas e callback onTick/onDraw verificados. A execução real ainda deve ser conferida dentro do Stormworks._";
 }
 
-async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown) {
+async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown, personalityPrompt: string) {
   const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
   const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
@@ -309,15 +309,15 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
       url = await generateWith(usedModel);
     }
   }
-  // A resposta textual acompanha a imagem e usa a mesma personalidade do restante do Workbench.
-  let answer = "Prontinho! Preparei a imagem com base no que você pediu. ✨";
+  // A mensagem que acompanha a imagem também segue a personalidade salva pelo usuário.
+  let answer = "Prontinho! A imagem foi gerada com base no seu pedido. ✨";
   const personalityKey = Deno.env.get("PERSONALITY_API_KEY");
   if (personalityKey) {
     try {
       answer = await openAI(OPENROUTER, personalityKey, PERSONA_MODEL, [
-        { role: "system", content: PERSONALITY_PROMPT + " Responda como o próprio AI Workbench com uma legenda bem curta, normalmente uma frase, adequada ao tom e ao tamanho do pedido. Não descreva detalhes visuais que você não consegue verificar, não repita o prompt inteiro, não use introdução longa e não diga que a imagem está perfeita." },
-        { role: "user", content: "Pedido de imagem: " + latest + "\\nPerfil usado: " + profile + "\\nProvedor: " + provider + ". Escreva apenas a mensagem curta que acompanha a imagem." }
-      ], 0.8, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 180);
+        { role: "system", content: PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (prioridade alta): " + (personalityPrompt || "Seja natural, amigável e descontraído.") + "\\n\\nResponda como o próprio Workbench, demonstrando essa personalidade no vocabulário, humor, ritmo e atitude. Escreva uma mensagem curta e natural que acompanhe a imagem: normalmente uma ou duas frases, ajustadas ao pedido. Não diga apenas que gerou a imagem, não repita o pedido inteiro e não afirme detalhes visuais que não pode verificar." },
+        { role: "user", content: "Pedido de imagem: " + latest + "\\nPerfil usado: " + profile + "\\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
+      ], 0.8, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220);
     } catch (error) {
       console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
     }
@@ -355,7 +355,7 @@ Deno.serve(async (req: Request) => {
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
     if (mode === "image") {
-      const generated = await image(messages, body.imageProfile);
+      const generated = await image(messages, body.imageProfile, personalityPrompt);
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
