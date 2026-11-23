@@ -1,4 +1,4 @@
-const CACHE = 'ai-workbench-shell-v1';
+const CACHE = 'ai-workbench-shell-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));
