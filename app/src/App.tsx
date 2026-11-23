@@ -1289,7 +1289,7 @@ export default function App() {
               {sending && (
                 <article className="message-row message-row--assistant">
                   <div className="message-avatar message-avatar--assistant"><Sparkles size={15} /></div>
-                  <div className="message-body"><div className="message-author">Workbench<span>gerando</span></div><div className="typing-indicator"><i /><i /><i /></div></div>
+                  <div className="message-body"><div className="message-author">Workbench<span>{mode === 'personality' ? 'digitando…' : 'gerando…'}</span></div><div className="typing-indicator"><i /><i /><i /></div></div>
                 </article>
               )}
             </div>
