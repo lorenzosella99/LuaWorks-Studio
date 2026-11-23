@@ -1,0 +1,415 @@
+name: Build AI Workbench packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-workbench-packages-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Verify tracked application source
+        run: |
+          test -f app/package.json
+          test -f app/src/App.tsx
+          test ! -e app/.env
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Linux packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rpm libfuse2 curl desktop-file-utils
+
+      - name: Build web application
+        working-directory: app
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+        env:
+          VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Generate native Android project
+        working-directory: app
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build signed Android APK when signing secrets are configured
+        working-directory: app/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "Signing secrets found: building a signed release APK."
+            KEYSTORE="$RUNNER_TEMP/ai-workbench-release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            ./gradlew assembleRelease --no-daemon
+            UNSIGNED_APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*-unsigned.apk' -print -quit)"
+            if [[ -z "$UNSIGNED_APK" ]]; then
+              echo "Unsigned release APK not found." >&2
+              exit 1
+            fi
+            APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --out "$RUNNER_TEMP/AI-Workbench-Android.apk" \
+              "$UNSIGNED_APK"
+            "$APKSIGNER" verify --verbose "$RUNNER_TEMP/AI-Workbench-Android.apk"
+            rm -f "$KEYSTORE"
+          else
+            echo "::warning::Android signing secrets are missing. Building an unsigned-by-release-identity debug APK for testing."
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/AI-Workbench-Android.apk"
+          fi
+
+      - name: Prepare shared Linux application files
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/ai-workbench-root"
+          mkdir -p "$ROOT/opt/ai-workbench/site" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+          cp -a app/dist/. "$ROOT/opt/ai-workbench/site/"
+          install -m 0644 app/public/icons/icon-512.png "$ROOT/usr/share/icons/hicolor/512x512/apps/ai-workbench.png"
+          cat > "$ROOT/usr/bin/ai-workbench" <<'LAUNCHER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+          APP_DIR="${AI_WORKBENCH_SITE_DIR:-}"
+          if [[ -z "$APP_DIR" ]]; then
+            if [[ -d "$SCRIPT_DIR/site" ]]; then APP_DIR="$SCRIPT_DIR/site"; else APP_DIR="/opt/ai-workbench/site"; fi
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "AI Workbench precisa do Python 3 para iniciar o servidor local." >&2
+            exit 1
+          fi
+          if ! command -v xdg-open >/dev/null 2>&1; then
+            echo "Instale xdg-utils para abrir o AI Workbench no navegador." >&2
+            exit 1
+          fi
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "Arquivos do AI Workbench não encontrados: $APP_DIR" >&2
+            exit 1
+          fi
+          STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ai-workbench"
+          mkdir -p "$STATE_DIR"
+          PID_FILE="$STATE_DIR/server.pid"
+          PORT_FILE="$STATE_DIR/server.port"
+          PORT=""
+          if [[ -f "$PID_FILE" && -f "$PORT_FILE" ]]; then
+            PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+            SAVED_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
+            if [[ -n "$PID" && -n "$SAVED_PORT" ]] && kill -0 "$PID" 2>/dev/null; then PORT="$SAVED_PORT"; fi
+          fi
+          if [[ -z "$PORT" ]]; then
+            PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+            nohup python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$APP_DIR" >/dev/null 2>&1 </dev/null &
+            echo "$!" > "$PID_FILE"
+            echo "$PORT" > "$PORT_FILE"
+            sleep 1
+            if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+              rm -f "$PID_FILE" "$PORT_FILE"
+              echo "Não foi possível iniciar o servidor local." >&2
+              exit 1
+            fi
+          fi
+          xdg-open "http://127.0.0.1:$PORT/"
+          LAUNCHER
+          chmod 0755 "$ROOT/usr/bin/ai-workbench"
+          cat > "$ROOT/usr/share/applications/ai-workbench.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=AI Workbench
+          Comment=Ambiente de criação e programação
+          Exec=ai-workbench
+          Icon=ai-workbench
+          Terminal=false
+          Categories=Development;Utility;
+          StartupNotify=true
+          DESKTOP
+          chmod 0644 "$ROOT/usr/share/applications/ai-workbench.desktop"
+          desktop-file-validate "$ROOT/usr/share/applications/ai-workbench.desktop"
+
+      - name: Build Ubuntu Debian Zorin package
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/ai-workbench-root"
+          DEBROOT="$RUNNER_TEMP/ai-workbench-deb"
+          mkdir -p "$DEBROOT/DEBIAN"
+          cp -a "$ROOT/." "$DEBROOT/"
+          cat > "$DEBROOT/DEBIAN/control" <<'CONTROL'
+          Package: ai-workbench
+          Version: 1.0.0
+          Section: devel
+          Priority: optional
+          Architecture: all
+          Depends: python3, xdg-utils
+          Maintainer: AI Workbench
+          Description: AI Workbench - ambiente de criação e programação
+           Aplicativo web empacotado para desktop Linux.
+          CONTROL
+          dpkg-deb --root-owner-group --build "$DEBROOT" "$RUNNER_TEMP/AI-Workbench-Ubuntu-Debian.deb"
+
+      - name: Build Fedora openSUSE RPM package
+        run: |
+          set -euo pipefail
+          TOP="$RUNNER_TEMP/rpmbuild"
+          mkdir -p "$TOP/BUILD" "$TOP/RPMS" "$TOP/SOURCES" "$TOP/SPECS" "$TOP/SRPMS"
+          tar -czf "$TOP/SOURCES/ai-workbench-root.tar.gz" -C "$RUNNER_TEMP/ai-workbench-root" .
+          cat > "$TOP/SPECS/ai-workbench.spec" <<'SPEC'
+          Name: ai-workbench
+          Version: 1.0.0
+          Release: 1
+          Summary: AI Workbench - ambiente de criação e programação
+          License: Proprietary
+          BuildArch: noarch
+          Requires: python3
+          Requires: xdg-utils
+          Source0: ai-workbench-root.tar.gz
+
+          %description
+          Aplicativo de criação e programação para desktop Linux.
+
+          %prep
+          %setup -q -c -T
+
+          %install
+          mkdir -p %{buildroot}
+          tar -xzf %{SOURCE0} -C %{buildroot}
+
+          %files
+          %defattr(-,root,root,-)
+          /opt/ai-workbench/site
+          /usr/bin/ai-workbench
+          /usr/share/applications/ai-workbench.desktop
+          /usr/share/icons/hicolor/512x512/apps/ai-workbench.png
+          SPEC
+          rpmbuild --define "_topdir $TOP" -bb "$TOP/SPECS/ai-workbench.spec"
+          cp "$TOP/RPMS/noarch/ai-workbench-1.0.0-1.noarch.rpm" "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm"
+
+      - name: Build universal Linux AppImage
+        run: |
+          set -euo pipefail
+          APPDIR="$RUNNER_TEMP/AI-Workbench.AppDir"
+          OUT="$RUNNER_TEMP/AI-Workbench-Linux-x86_64.AppImage"
+          mkdir -p "$APPDIR"
+          cp -a "$RUNNER_TEMP/ai-workbench-root/." "$APPDIR/"
+          install -m 0644 "$APPDIR/usr/share/applications/ai-workbench.desktop" "$APPDIR/ai-workbench.desktop"
+          install -m 0644 "$APPDIR/usr/share/icons/hicolor/512x512/apps/ai-workbench.png" "$APPDIR/ai-workbench.png"
+          cat > "$APPDIR/AppRun" <<'APPRUN'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+          export AI_WORKBENCH_SITE_DIR="$HERE/opt/ai-workbench/site"
+          exec "$HERE/usr/bin/ai-workbench" "$@"
+          APPRUN
+          chmod 0755 "$APPDIR/AppRun"
+          curl -fsSL --retry 3 "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage" -o "$RUNNER_TEMP/appimagetool"
+          curl -fsSL --retry 3 "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64" -o "$RUNNER_TEMP/appimage-runtime"
+          chmod 0755 "$RUNNER_TEMP/appimagetool" "$RUNNER_TEMP/appimage-runtime"
+          ARCH=x86_64 APPIMAGETOOL_RUNTIME_FILE="$RUNNER_TEMP/appimage-runtime" "$RUNNER_TEMP/appimagetool" "$APPDIR" "$OUT"
+          chmod 0755 "$OUT"
+
+      - name: Build portable Linux TAR.GZ
+        run: |
+          set -euo pipefail
+          PORTABLE="$RUNNER_TEMP/ai-workbench-portable"
+          mkdir -p "$PORTABLE/site"
+          cp -a app/dist/. "$PORTABLE/site/"
+          cp "$RUNNER_TEMP/ai-workbench-root/usr/bin/ai-workbench" "$PORTABLE/start-ai-workbench"
+          chmod 0755 "$PORTABLE/start-ai-workbench"
+          cat > "$PORTABLE/LEIA-ME.txt" <<'INFO'
+          AI Workbench - Linux portátil
+
+          Requisitos: Python 3, xdg-utils e um navegador.
+          Extraia o arquivo e execute ./start-ai-workbench.
+          O aplicativo abre no navegador padrão e precisa de internet para recursos online.
+          INFO
+          tar -czf "$RUNNER_TEMP/AI-Workbench-Linux-Portable.tar.gz" -C "$RUNNER_TEMP" ai-workbench-portable
+
+      - name: Collect packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/package-output"
+          cp "$RUNNER_TEMP/AI-Workbench-Android.apk" "$RUNNER_TEMP/package-output/AI-Workbench-Android.apk"
+          cp "$RUNNER_TEMP/AI-Workbench-Ubuntu-Debian.deb" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Linux-x86_64.AppImage" "$RUNNER_TEMP/package-output/"
+          cp "$RUNNER_TEMP/AI-Workbench-Linux-Portable.tar.gz" "$RUNNER_TEMP/package-output/"
+          ls -lh "$RUNNER_TEMP/package-output"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-workbench-android-linux
+          path: ${{ runner.temp }}/package-output/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish latest downloadable packages
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: AI Workbench — Downloads
+          target_commitish: main
+          body: |
+            Downloads oficiais do AI Workbench.
+
+            Linux x86_64: AppImage, DEB (Ubuntu/Debian/Zorin), RPM (Fedora/openSUSE) e TAR.GZ portátil.
+            Android: APK para instalação manual.
+          files: |
+            ${{ runner.temp }}/package-output/AI-Workbench-Android.apk
+            ${{ runner.temp }}/package-output/AI-Workbench-Linux-x86_64.AppImage
+            ${{ runner.temp }}/package-output/AI-Workbench-Ubuntu-Debian.deb
+            ${{ runner.temp }}/package-output/AI-Workbench-Fedora-openSUSE.rpm
+            ${{ runner.temp }}/package-output/AI-Workbench-Linux-Portable.tar.gz
+          overwrite_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build lightweight Windows app
+    runs-on: windows-latest
+    needs: build
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis --yes --no-progress
+          }
+          $nsisPath = "C:\Program Files (x86)\NSIS"
+          if (Test-Path $nsisPath) {
+            $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+
+      - name: Install dependencies and build web app
+        working-directory: app
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+        env:
+          VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
+
+      - name: Prepare Windows application icons
+        working-directory: app
+        shell: pwsh
+        run: |
+          py -m pip install Pillow
+          New-Item -ItemType Directory -Force src-tauri/icons | Out-Null
+          py -c "from PIL import Image; image=Image.open('public/icons/icon-512.png').convert('RGBA'); image.save('src-tauri/icons/icon.png'); image.save('src-tauri/icons/icon.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+
+      - name: Build Windows installer
+        working-directory: app
+        run: npx --yes @tauri-apps/cli@2 build --bundles nsis
+
+      - name: Package portable Windows version
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "ai-workbench-windows-portable"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $exe = "app/src-tauri/target/release/ai-workbench.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Executable portátil não encontrado: $exe"
+          }
+          Copy-Item $exe (Join-Path $out "AI-Workbench.exe")
+          @"
+          AI Workbench - Windows portátil x64
+
+          1. Extraia este arquivo ZIP para uma pasta.
+          2. Execute AI-Workbench.exe.
+
+          Requisitos:
+          - Windows 10 ou Windows 11 de 64 bits.
+          - Microsoft Edge WebView2 Runtime. Ele já vem integrado ao Windows 10
+            (versão de abril de 2018 ou posterior) e ao Windows 11.
+          - Conexão com a internet para usar os recursos online.
+
+          Esta versão não instala atalhos nem registra o aplicativo no Windows.
+          "@ | Set-Content -Path (Join-Path $out "LEIA-ME.txt") -Encoding UTF8
+          Compress-Archive -Path (Join-Path $out "*") -DestinationPath "$env:RUNNER_TEMP/AI-Workbench-Windows-x64-Portable.zip" -Force
+
+      - name: Collect Windows packages
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "windows-package-output"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $setup = Get-ChildItem "app/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
+          if (-not $setup) {
+            throw "Instalador NSIS não foi encontrado."
+          }
+          Copy-Item $setup.FullName (Join-Path $out "AI-Workbench-Windows-x64-Setup.exe")
+          Copy-Item "$env:RUNNER_TEMP/AI-Workbench-Windows-x64-Portable.zip" $out
+          Get-ChildItem $out | Select-Object Name,Length
+
+      - name: Publish Windows downloads
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: AI Workbench — Downloads
+          target_commitish: main
+          body: |
+            Downloads oficiais do AI Workbench.
+
+            Windows x64: instalador NSIS (.exe) e versão portátil (.zip).
+            Linux x86_64: AppImage, DEB, RPM e TAR.GZ portátil.
+            Android: APK para instalação manual.
+            O instalador Windows usa o WebView2 do sistema e baixa o bootstrapper somente se necessário.
+          files: |
+            ${{ runner.temp }}/windows-package-output/AI-Workbench-Windows-x64-Setup.exe
+            ${{ runner.temp }}/windows-package-output/AI-Workbench-Windows-x64-Portable.zip
+          overwrite_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

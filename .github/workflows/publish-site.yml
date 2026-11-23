@@ -1,0 +1,59 @@
+name: Publish AI Workbench site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/publish-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-workbench-pages-publish-v2
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Verify tracked application source
+        run: |
+          test -f app/package.json
+          test -f app/src/App.tsx
+          test ! -e app/.env
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build website
+        working-directory: app
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+        env:
+          VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K2bal_OIfSiXjRqygUyjgw_HJJx5f4y
+
+      - name: Publish built site to GitHub Pages branch
+        run: |
+          cp -a app/dist/. .
+          touch .nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- app index.html assets icons manifest.webmanifest sw.js .nojekyll
+          if git diff --cached --quiet; then
+            echo "The published website is already up to date."
+          else
+            git commit -m "Publish AI Workbench web app"
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi

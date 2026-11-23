@@ -1,0 +1,21 @@
+[package]
+name = "ai-workbench"
+version = "1.0.0"
+description = "AI Workbench desktop app"
+authors = ["AI Workbench"]
+edition = "2021"
+
+[lib]
+name = "ai_workbench_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
