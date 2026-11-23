@@ -192,11 +192,27 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
     ? "CONTEXTO PARA CONTINUIDADE VISUAL (use apenas o que for relevante):\n" + context + "\n\nNOVO PEDIDO, QUE TEM PRIORIDADE:\n" + latest
     : latest;
 
-  // Modelo 1: interpreta o pedido e o converte em uma descrição visual precisa.
+  const lowerPrompt = latest.toLowerCase();
+  const automaticProfile: ImageProfile = /\\b(foto|fotografia|realista|realismo|fotorrealista|photoreal|realistic|retrato real)\\b/i.test(lowerPrompt)
+    ? "realism"
+    : /\\b(aleat[oó]ri[oa]|surreal|absurd[oa]|engra[cç]ad[oa]|maluc[oa]|criativ[oa]|imagin[eá]ri[oa]|fant[aá]stic[oa])\\b/i.test(lowerPrompt)
+      ? "creative"
+      : "precision";
+  const profile: ImageProfile = requestedProfile === "precision" || requestedProfile === "creative" || requestedProfile === "realism"
+    ? requestedProfile
+    : automaticProfile;
+  const imageModel = IMAGE_MODELS[profile];
+  const profileInstruction = profile === "precision"
+    ? "MODO PRECISÃO: preserve literalmente cada detalhe, objeto, quantidade, cor, posição e ação. Não invente, substitua nem remova elementos."
+    : profile === "creative"
+      ? "MODO CRIATIVIDADE: mantenha a ideia principal e os elementos obrigatórios, mas explore uma interpretação visual original, divertida, inesperada e imaginativa. Não contradiga instruções explícitas."
+      : "MODO REALISMO: produza aparência de fotografia real, materiais e pele naturais, iluminação fisicamente plausível, texturas autênticas, lente e profundidade de campo coerentes. Evite desenho, pintura e aparência de render 3D, salvo pedido explícito.";
+
+  // Modelo 1: interpreta o pedido conforme o perfil escolhido.
   const refinedPrompt = await openAI(GROQ, promptKey, IMAGE_PROMPT_MODEL, [
     {
       role: "system",
-      content: "Você é um tradutor de instruções visuais extremamente fiel. Sua prioridade absoluta é obedecer ao pedido, não embelezá-lo nem torná-lo mais convencional. Antes de escrever, extraia mentalmente cada requisito e preserve TODOS: objetos e quantidades exatas, características, cores, roupas, proporções, posições relativas, orientação, ações, cenário, época, estilo, enquadramento, perspectiva, iluminação e quaisquer relações espaciais. Não substitua objetos por similares. Não adicione personagens, objetos, textos, acessórios, cenários ou efeitos que não foram pedidos. Não remova detalhes aparentemente estranhos. Para pedidos aleatórios, absurdos, contraditórios ou surrealistas, mantenha a combinação exatamente como foi solicitada em vez de corrigi-la. Descreva relações espaciais como acima, abaixo, dentro, fora e à esquerda de forma explícita. Separe o prompt em: SUBJECTS AND EXACT COUNT; APPEARANCE; ACTIONS AND SPATIAL RELATIONSHIPS; ENVIRONMENT; CAMERA AND COMPOSITION; LIGHTING AND STYLE; MUST INCLUDE; MUST NOT INCLUDE. Use frases concretas e sem ambiguidades. Não transforme uma solicitação simples em uma cena cinematográfica genérica. Se houver texto, preserve cada palavra e a grafia literal. Retorne somente o prompt final, sem comentários, sem alternativas e sem inventar conteúdo."
+      content: "Você é um diretor de arte e tradutor de instruções visuais. " + profileInstruction + " Preserve os detalhes essenciais do pedido, descreva sujeitos e quantidades, aparência, ações, relações espaciais, ambiente, câmera, composição, iluminação e estilo. Para posições, seja explícito: acima, abaixo, dentro, fora, à esquerda e à direita. Não transforme pedidos simples em cenas genéricas. Se houver texto, preserve a grafia literal. Organize em: SUBJECTS AND COUNT; APPEARANCE; ACTIONS AND SPATIAL RELATIONSHIPS; ENVIRONMENT; CAMERA AND COMPOSITION; LIGHTING AND STYLE; MUST INCLUDE; MUST NOT INCLUDE. Retorne somente o prompt final."
     },
     { role: "user", content: visualBrief }
   ], 0.25, {}, 1800);
