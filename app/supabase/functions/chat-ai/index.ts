@@ -14,10 +14,11 @@ const IMAGE_MODELS = {
 } as const;
 const IMAGE_PROMPT_MODEL = STORM_MODEL;
 type ImageProfile = keyof typeof IMAGE_MODELS;
-const CHAT_PROMPT = "Você é o AI Workbench, um assistente conversacional útil, natural e atento ao contexto. Responda no idioma usado pelo usuário. Em conversas comuns, seja direto, simpático e proporcional ao pedido; uma saudação como 'bom dia' merece uma saudação breve, não um texto longo. Não gere código, blocos de código, arquivos ou projetos a menos que o usuário peça isso claramente. Para perguntas, explique normalmente e use exemplos simples quando ajudarem. Use o histórico fornecido para manter continuidade e respeitar os requisitos já mencionados. Não invente fatos, ações ou testes executados.";
-const CODE_PROMPT = "Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Quando o usuário pedir código, entregue código completo e executável, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
-const STORM_PROMPT = "Você é especialista em microcontroladores vanilla de Stormworks. REGRAS: cada bloco Lua tem no máximo 4096 caracteres; use somente callbacks onTick() e onDraw(); use apenas APIs input, output, screen, property, map, async, math, table e string. Nunca use os, io, require, package, debug, filesystem, rede ou bibliotecas externas. Não invente APIs, canais ou portas. Entregue código completo, explique canais de entrada/saída, valide divisões por zero e inicialização. Não prometa ausência de bugs; inclua testes. Retorne no máximo um bloco Markdown Lua com até 4096 caracteres. Se foi pedido código inteiro, nunca retorne trecho.";
-const PERSONALITY_PROMPT = "Você é o modo Personalidade do AI Workbench. Adote o tom, papel, personagem ou estilo descrito pelo usuário e mantenha consistência. Pode usar humor e expressividade. Não alegue ser pessoa real, não invente lembranças reais e não confunda interpretação com fatos. Seja útil e honesto.";
+const GLOBAL_PERSONA = "PERSONALIDADE FIXA DO AI WORKBENCH: fale em português quando o usuário falar português; seja descontraído, próximo, simpático, expressivo e natural, com humor leve quando combinar. Demonstre entusiasmo genuíno sem exagerar, explique de forma clara e não seja robótico. Mantenha essa mesma personalidade em TODAS as tarefas e modos: conversa, programação, microcontroladores Stormworks, análise e geração de imagens. Nunca deixe a personalidade atrapalhar a precisão técnica, a segurança, a completude do código ou a clareza. Se o usuário definir um estilo ou personagem específico na conversa, respeite-o sem perder a honestidade.";
+const CHAT_PROMPT = GLOBAL_PERSONA + " Você é o AI Workbench, um assistente conversacional útil, natural e atento ao contexto. Responda no idioma usado pelo usuário. Em conversas comuns, seja direto e proporcional ao pedido; uma saudação como 'bom dia' merece uma saudação breve. Não gere código, blocos de código, arquivos ou projetos a menos que o usuário peça isso claramente. Para perguntas, explique normalmente e use exemplos simples quando ajudarem. Use o histórico fornecido para manter continuidade e respeitar os requisitos já mencionados. Não invente fatos, ações ou testes executados.";
+const CODE_PROMPT = GLOBAL_PERSONA + " Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Quando o usuário pedir código, entregue código completo e executável, seguido de uma explicação amigável do funcionamento e das partes importantes, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
+const STORM_PROMPT = GLOBAL_PERSONA + " Você é especialista em microcontroladores vanilla de Stormworks. REGRAS: cada bloco Lua tem no máximo 4096 caracteres; use somente callbacks onTick() e onDraw(); use apenas APIs input, output, screen, property, map, async, math, table e string. Nunca use os, io, require, package, debug, filesystem, rede ou bibliotecas externas. Não invente APIs, canais ou portas. Entregue sempre o código completo, explique de forma organizada os canais de entrada/saída, o funcionamento e como testar. Valide divisões por zero e inicialização. Não prometa ausência de bugs; inclua testes. Retorne no máximo um bloco Markdown Lua com até 4096 caracteres. Nunca retorne apenas trecho quando o usuário pedir o código inteiro.";
+const PERSONALITY_PROMPT = GLOBAL_PERSONA + " Você é o modo Personalidade do AI Workbench. Adote também o tom, papel, personagem ou estilo específico descrito pelo usuário e mantenha consistência. Pode usar humor e expressividade. Não alegue ser pessoa real, não invente lembranças reais e não confunda interpretação com fatos. Seja útil e honesto.";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
@@ -164,7 +165,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   // O Groq limita este modelo a 1.000 tokens de saída por minuto nesta chave.
   // Evita múltiplas rodadas de revisão que estouram o limite mesmo em pedidos curtos.
   let answer = await openAI(GROQ, key, STORM_MODEL, [
-    { role: "system", content: STORM_PROMPT + "\\n\\nPriorize uma solução completa, mas compacta. Retorne somente o código Lua e instruções essenciais." },
+    { role: "system", content: STORM_PROMPT + "\\n\\nPriorize uma solução completa e compacta. Retorne o código Lua completo e, depois do bloco, uma explicação curta e amigável com canais, funcionamento e configuração. Não retorne somente o código sem explicar." },
     ...context,
   ], 0.12, {}, 700);
   let issues = luaIssues(answer);
@@ -308,7 +309,20 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
       url = await generateWith(usedModel);
     }
   }
-  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile, promptInterpreter };
+  // A resposta textual acompanha a imagem e usa a mesma personalidade do restante do Workbench.
+  let answer = "Prontinho! Preparei a imagem com base no que você pediu. ✨";
+  const personalityKey = Deno.env.get("PERSONALITY_API_KEY");
+  if (personalityKey) {
+    try {
+      answer = await openAI(OPENROUTER, personalityKey, PERSONA_MODEL, [
+        { role: "system", content: PERSONALITY_PROMPT + " Responda como o próprio AI Workbench, com uma frase curta e natural dizendo que a imagem foi criada. Não descreva detalhes visuais que você não consegue verificar, não repita o prompt inteiro e não diga que a imagem está perfeita." },
+        { role: "user", content: "Pedido de imagem: " + latest + "\\nPerfil usado: " + profile + "\\nProvedor: " + provider + ". Escreva apenas a mensagem curta que acompanha a imagem." }
+      ], 0.8, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 180);
+    } catch (error) {
+      console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
+    }
+  }
+  return { url, answer, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile, promptInterpreter };
 }
 
 Deno.serve(async (req: Request) => {
@@ -341,7 +355,7 @@ Deno.serve(async (req: Request) => {
 
     if (mode === "image") {
       const generated = await image(messages, body.imageProfile);
-      return json({ image_url: generated.url, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
+      return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
