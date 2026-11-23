@@ -1,0 +1,10 @@
+import { useState } from 'react';
+import { History, RotateCcw } from 'lucide-react';
+import { addVersion, getFiles, getVersions, makeId, saveFile } from './localStore';
+export default function VersionHistoryTool() {
+ const [versions,setVersions]=useState(getVersions); const [files,setFiles]=useState(getFiles); const [notice,setNotice]=useState('');
+ function restore(version: ReturnType<typeof getVersions>[number]) { const current=files.find(f=>f.id===version.fileId); if(!current){setNotice('O arquivo original não existe mais. Você pode recuperar o conteúdo criando um arquivo no Editor.'); return;} const next={...current,content:version.content,updatedAt:new Date().toISOString()}; setFiles(saveFile(next)); addVersion({id:makeId(),fileId:current.id,fileName:current.name,content:current.content,createdAt:new Date().toISOString()}); setVersions(getVersions()); setNotice('Versão restaurada. A versão anterior também foi preservada.'); }
+ return <section className="tool-panel"><div className="tool-panel-heading"><div><span className="tool-eyebrow">FERRAMENTA LOCAL 06</span><h2><History size={19}/> Histórico de versões</h2><p>Snapshots automáticos criados ao salvar arquivos pelo Editor de código.</p></div><span className="tool-local-pill">OFFLINE</span></div>
+ {notice&&<div className="tool-notice">{notice}</div>}<div className="tool-file-list">{versions.length?versions.map(v=><div className="tool-file-row" key={v.id}><History size={16}/><div><strong>{v.fileName}</strong><small>{new Date(v.createdAt).toLocaleString('pt-BR')} · {v.content.length.toLocaleString('pt-BR')} caracteres</small></div><button className="tool-button" onClick={()=>navigator.clipboard?.writeText(v.content)}>Copiar</button><button className="tool-icon-button" title="Restaurar versão" onClick={()=>restore(v)}><RotateCcw size={15}/></button></div>):<div className="tool-empty"><History size={25}/><strong>Nenhuma versão salva</strong><span>Salve um arquivo no editor para criar seu primeiro snapshot.</span></div>}</div>
+ </section>;
+}

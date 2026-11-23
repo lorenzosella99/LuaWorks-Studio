@@ -1,0 +1,13 @@
+import { useRef, useState } from 'react';
+import { BookOpen, Search, Trash2, Upload } from 'lucide-react';
+import { getKnowledge, makeId, removeKnowledge, saveKnowledge } from './localStore';
+export default function KnowledgeBaseTool() {
+ const [docs,setDocs]=useState(getKnowledge); const [query,setQuery]=useState(''); const [selected,setSelected]=useState(''); const input=useRef<HTMLInputElement>(null);
+ async function add(list:FileList|null){if(!list)return;for(const file of Array.from(list)){if(file.size>1_500_000)continue;const ext=file.name.split('.').pop()?.toLowerCase();if(!['txt','md','json','csv','log'].includes(ext||''))continue;const doc={id:makeId(),name:file.name,content:await file.text(),addedAt:new Date().toISOString()};setDocs(saveKnowledge(doc));}}
+ const filtered=docs.filter(d=>(d.name+' '+d.content).toLowerCase().includes(query.toLowerCase())); const current=docs.find(d=>d.id===selected);
+ return <section className="tool-panel"><div className="tool-panel-heading"><div><span className="tool-eyebrow">FERRAMENTA LOCAL 07</span><h2><BookOpen size={19}/> Base de conhecimento</h2><p>Guarde documentos para consulta e pesquise seu conteúdo sem enviar dados para servidores.</p></div><span className="tool-local-pill">PRIVADO</span></div>
+ <div className="tool-toolbar"><button className="tool-button tool-button-primary" onClick={()=>input.current?.click()}><Upload size={14}/> Adicionar documentos</button><input ref={input} hidden type="file" multiple accept=".txt,.md,.json,.csv,.log" onChange={e=>{void add(e.target.files);e.currentTarget.value='';}}/><span className="tool-muted">TXT, Markdown, JSON, CSV e LOG · até 1,5 MB cada</span></div>
+ <div className="tool-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Pesquisar nos nomes e conteúdos..."/></div>
+ <div className="tool-knowledge-layout"><div className="tool-file-list">{filtered.map(doc=><div className={'tool-file-row '+(selected===doc.id?'tool-file-row-active':'')} key={doc.id} onClick={()=>setSelected(doc.id)}><BookOpen size={16}/><div><strong>{doc.name}</strong><small>{doc.content.length.toLocaleString('pt-BR')} caracteres</small></div><button className="tool-icon-button tool-danger" onClick={e=>{e.stopPropagation();setDocs(removeKnowledge(doc.id));if(selected===doc.id)setSelected('');}}><Trash2 size={14}/></button></div>)}{!filtered.length&&<div className="tool-empty">Nenhum documento encontrado.</div>}</div><div className="tool-knowledge-preview">{current?<><strong>{current.name}</strong><pre>{current.content}</pre></>:<span>Selecione um documento para visualizar.</span>}</div></div>
+ </section>;
+}

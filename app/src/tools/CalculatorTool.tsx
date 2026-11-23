@@ -1,0 +1,13 @@
+import { useState } from 'react';
+import { Calculator } from 'lucide-react';
+export default function CalculatorTool() {
+ const [a,setA]=useState(''); const [b,setB]=useState(''); const [op,setOp]=useState('+'); const [precision,setPrecision]=useState('2');
+ const x=Number(a.replace(',','.')); const y=Number(b.replace(',','.')); const valid=a.trim()!==''&&b.trim()!==''&&Number.isFinite(x)&&Number.isFinite(y);
+ let result: number|null=null; if(valid){ if(op==='+')result=x+y; if(op==='-')result=x-y; if(op==='*')result=x*y; if(op==='/')result=y===0?null:x/y; if(op==='%')result=x*y/100; }
+ const units=[['km → m',1000],['m → cm',100],['kg → g',1000],['L → mL',1000],['°C → °F',null]] as const;
+ const [unit,setUnit]=useState('km → m'); const [unitValue,setUnitValue]=useState('1'); const numeric=Number(unitValue.replace(',','.')); const converted=unit==='°C → °F'?numeric*9/5+32:numeric*(units.find(u=>u[0]===unit)?.[1]??1);
+ return <section className="tool-panel"><div className="tool-panel-heading"><div><span className="tool-eyebrow">FERRAMENTA LOCAL 05</span><h2><Calculator size={19}/> Calculadora técnica</h2><p>Operações, porcentagens e conversões comuns sem chamadas externas.</p></div><span className="tool-local-pill">OFFLINE</span></div>
+  <div className="tool-calc-grid"><div className="tool-subpanel"><h3>Calculadora</h3><div className="tool-calc-fields"><input value={a} onChange={e=>setA(e.target.value)} placeholder="Valor A" inputMode="decimal"/><select value={op} onChange={e=>setOp(e.target.value)}><option value="+">+</option><option value="-">−</option><option value="*">×</option><option value="/">÷</option><option value="%">% de</option></select><input value={b} onChange={e=>setB(e.target.value)} placeholder="Valor B" inputMode="decimal"/></div><label className="tool-inline-label">Casas decimais<select value={precision} onChange={e=>setPrecision(e.target.value)}><option value="0">0</option><option value="2">2</option><option value="4">4</option><option value="6">6</option></select></label><div className="tool-calc-result">{valid&&result!==null?result.toLocaleString('pt-BR',{maximumFractionDigits:Number(precision)}):valid?'Divisão por zero':'Resultado aparecerá aqui'}</div></div>
+  <div className="tool-subpanel"><h3>Conversor de unidades</h3><select value={unit} onChange={e=>setUnit(e.target.value)}>{units.map(u=><option key={u[0]}>{u[0]}</option>)}</select><input value={unitValue} onChange={e=>setUnitValue(e.target.value)} placeholder="Valor" inputMode="decimal"/><div className="tool-calc-result">{Number.isFinite(converted)?converted.toLocaleString('pt-BR',{maximumFractionDigits:4}):'—'} <small>{unit.split(' → ')[1]}</small></div></div></div>
+ </section>;
+}

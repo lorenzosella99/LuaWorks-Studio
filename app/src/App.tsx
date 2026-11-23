@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import MarkdownMessage from './components/MarkdownMessage';
 import LuaValidator from './components/LuaValidator';
+import ToolsHub from './tools/ToolsHub';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { ChatMessage, ChatMode, Conversation } from './types';
 
@@ -263,7 +264,7 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [view, setView] = useState<'chat' | 'lua-validator'>('chat');
+  const [view, setView] = useState<'chat' | 'lua-validator' | 'tools'>('chat');
   const [mode, setMode] = useState<ChatMode>('auto');
   const [imageProfile, setImageProfile] = useState<'auto' | 'precision' | 'creative' | 'realism'>(() => {
     const saved = window.localStorage.getItem('ai-workbench-image-profile-v1');
@@ -1176,9 +1177,8 @@ export default function App() {
 
         <div className="sidebar-section-label tool-section-label">FERRAMENTAS</div>
         <div className="tool-navigation">
-          <button className={`tool-nav-item ${view === 'lua-validator' ? 'tool-nav-item--active' : ''}`} onClick={() => { setView('lua-validator'); setSidebarOpen(false); }}>
-            <Wrench size={15} /><span>Validador Lua</span><span className="tool-nav-tag">LOCAL</span>
-          </button>
+          <button className={`tool-nav-item ${view === 'tools' ? 'tool-nav-item--active' : ''}`} onClick={() => { setView('tools'); setSidebarOpen(false); }}><Wrench size={15} /><span>Central de ferramentas</span><span className="tool-nav-tag">LOCAL</span></button>
+          <button className={`tool-nav-item ${view === 'lua-validator' ? 'tool-nav-item--active' : ''}`} onClick={() => { setView('lua-validator'); setSidebarOpen(false); }}><Code2 size={15} /><span>Validador Lua</span><span className="tool-nav-tag">LOCAL</span></button>
         </div>
 
         <div className="sidebar-bottom">
@@ -1196,16 +1196,16 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-left">
             <button className="icon-button mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={19} /></button>
-            <div className="workspace-label"><span className="workspace-kicker">{view === 'lua-validator' ? 'FERRAMENTA LOCAL' : 'WORKSPACE'}</span><span className="workspace-name">{view === 'lua-validator' ? 'Validador Lua' : activeConversation?.title ?? 'Novo projeto'}</span></div>
+            <div className="workspace-label"><span className="workspace-kicker">{view !== 'chat' ? 'FERRAMENTAS LOCAIS' : 'WORKSPACE'}</span><span className="workspace-name">{view === 'tools' ? 'Central de ferramentas' : view === 'lua-validator' ? 'Validador Lua' : activeConversation?.title ?? 'Novo projeto'}</span></div>
           </div>
           <div className="topbar-right">
             <span className="secure-label"><span className="secure-dot" /> CONECTADO</span>
-            <button className="topbar-tool-button" onClick={() => setView(view === 'chat' ? 'lua-validator' : 'chat')} title={view === 'chat' ? 'Abrir Validador Lua' : 'Voltar ao chat'}>{view === 'chat' ? <><Wrench size={14} /> Validador Lua</> : <><MessageSquare size={14} /> Voltar ao chat</>}</button>
+            <button className="topbar-tool-button" onClick={() => setView(view === 'chat' ? 'tools' : 'chat')} title={view === 'chat' ? 'Abrir ferramentas' : 'Voltar ao chat'}>{view === 'chat' ? <><Wrench size={14} /> Ferramentas</> : <><MessageSquare size={14} /> Voltar ao chat</>}</button>
             <button className="topbar-avatar" onClick={() => { void openSettings(); }} title="Configurações">{session.user.email?.slice(0, 1).toUpperCase() ?? 'U'}</button>
           </div>
         </header>
 
-        {view === 'lua-validator' ? <LuaValidator /> : <>
+        {view === 'lua-validator' ? <LuaValidator /> : view === 'tools' ? <ToolsHub /> : <>
         <div className="chat-scroll" ref={scrollRef} onScroll={(event) => {
           const el = event.currentTarget;
           setIsNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 140);

@@ -1,7 +1,0 @@
-project_id = "zmwgrlvgzcxmepfnltal"
-
-[functions.chat-ai]
-verify_jwt = true
-
-[functions.github-integration]
-verify_jwt = true
