@@ -1,5 +1,5 @@
 import { Children, isValidElement, type ReactElement, type ReactNode, useMemo, useState } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/common';
 import { Check, Copy, Github } from 'lucide-react';
@@ -126,7 +126,7 @@ export default function MarkdownMessage({ content, mode, onSaveCode, onToast }: 
 
   return (
     <div className="markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown\n        remarkPlugins={[remarkGfm]}\n        components={components}\n        urlTransform={(url) => /^data:image\\/(?:png|jpe?g|webp|gif);base64,/i.test(url) ? url : defaultUrlTransform(url)}\n      >
         {content}
       </ReactMarkdown>
     </div>
