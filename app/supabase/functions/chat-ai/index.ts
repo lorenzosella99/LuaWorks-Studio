@@ -10,7 +10,7 @@ const PERSONA_MODEL = "openrouter/free";
 const IMAGE_MODELS = {
   precision: "google/gemini-3-pro-image",
   creative: "x-ai/grok-imagine-image-2.0",
-  realism: "black-forest-labs/flux.2-max",
+  realism: "bytedance/seedream-5.0-pro",
 } as const;
 const IMAGE_PROMPT_MODEL = STORM_MODEL;
 type ImageProfile = keyof typeof IMAGE_MODELS;
@@ -206,7 +206,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
     ? "MODO PRECISÃO: preserve literalmente cada detalhe, objeto, quantidade, cor, posição e ação. Não invente, substitua nem remova elementos."
     : profile === "creative"
       ? "MODO CRIATIVIDADE: mantenha a ideia principal e os elementos obrigatórios, mas explore uma interpretação visual original, divertida, inesperada e imaginativa. Não contradiga instruções explícitas."
-      : "MODO REALISMO: produza aparência de fotografia real, materiais e pele naturais, iluminação fisicamente plausível, texturas autênticas, lente e profundidade de campo coerentes. Evite desenho, pintura e aparência de render 3D, salvo pedido explícito.";
+      : "MODO REALISMO FOTOGRÁFICO EXTREMO: a imagem deve ser indistinguível de uma fotografia capturada por uma câmera profissional, NÃO uma ilustração, pintura, concept art ou render 3D. Use anatomia e proporções fisicamente corretas, geometria mecânica plausível, materiais com microtexturas imperfeitas, desgaste natural, reflexos e sombras coerentes, iluminação realista, exposição e balanço de branco naturais, lente fotográfica real, perspectiva e profundidade de campo ópticas. Evite contornos artificiais, superfícies plásticas, nitidez excessiva, simetria perfeita, aparência de videogame e borrões pictóricos. Se o pedido descrever veículo ou máquina, respeite construção mecânica real, rotor/pás, cockpit, trem de pouso e conexões estruturais plausíveis. A cena deve parecer uma fotografia documental/editorial, com detalhes nítidos no assunto principal e fundo naturalmente desfocado quando apropriado.";
 
   // Modelo 1: interpreta o pedido conforme o perfil escolhido.
   const refinedPrompt = await openAI(GROQ, promptKey, IMAGE_PROMPT_MODEL, [
