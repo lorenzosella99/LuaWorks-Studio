@@ -253,6 +253,10 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [view, setView] = useState<'chat' | 'lua-validator'>('chat');
   const [mode, setMode] = useState<ChatMode>('auto');
+  const [imageProfile, setImageProfile] = useState<'auto' | 'precision' | 'creative' | 'realism'>(() => {
+    const saved = window.localStorage.getItem('ai-workbench-image-profile-v1');
+    return saved === 'precision' || saved === 'creative' || saved === 'realism' ? saved : 'auto';
+  });
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [effortByMode, setEffortByMode] = useState<EffortSettings>(() => loadEffortSettings());
   const [draft, setDraft] = useState('');
@@ -282,6 +286,7 @@ export default function App() {
   const activeIdRef = useRef<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const currentMode = modes.find((item) => item.id === mode) ?? modes[0];
+  useEffect(() => { window.localStorage.setItem('ai-workbench-image-profile-v1', imageProfile); }, [imageProfile]);
   const welcomeCopy = getWelcomeCopy(session?.user ?? null, welcomeTime);
 
   useEffect(() => {
@@ -819,7 +824,7 @@ export default function App() {
 
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, messages: history },
+        body: { mode, effortByMode, imageProfile, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -895,7 +900,7 @@ export default function App() {
         if (modeToTest === 'image') {
           if (typeof data?.image_url !== 'string' || !data.image_url.startsWith('https://')) throw new Error('O gerador não retornou uma URL de imagem válida.');
           if (typeof data?.prompt_model !== 'string' || typeof data?.model !== 'string') throw new Error('A imagem foi gerada, mas os dois modelos não foram confirmados na resposta.');
-          updateProbe(id, 'ok', 'Os dois modelos responderam: Qwen interpretou o pedido e FLUX gerou a imagem. A imagem precisa ser aberta para inspeção visual.');
+          updateProbe(id, 'ok', 'Os modelos de interpretação e geração responderam. A imagem precisa ser aberta para inspeção visual.');
           return;
         }
         const answer = typeof data?.answer === 'string' ? data.answer : '';
@@ -1231,6 +1236,25 @@ export default function App() {
                           );
                         })}
                       </div>
+                      {(mode === 'image' || mode === 'auto') && (
+                        <>
+                          <div className="chat-menu-divider" />
+                          <div className="chat-menu-heading">Motor de imagem</div>
+                          <div className="image-profile-options" role="group" aria-label="Escolher IA de imagem">
+                            {([
+                              ['auto', 'Automático', 'A IA escolhe conforme o pedido'],
+                              ['precision', 'Precisão', 'Detalhes e instruções específicas'],
+                              ['creative', 'Criatividade', 'Ideias aleatórias e cenas surreais'],
+                              ['realism', 'Realismo', 'Aparência de fotografia real'],
+                            ] as const).map(([profile, label, description]) => (
+                              <button key={profile} type="button" className={'image-profile-option' + (imageProfile === profile ? ' image-profile-option--active' : '')} onClick={() => setImageProfile(profile)} aria-pressed={imageProfile === profile}>
+                                <span><strong>{label}</strong><small>{description}</small></span>
+                                {imageProfile === profile && <Check size={14} />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                       <div className="chat-menu-divider" />
                       <div className="chat-menu-heading">Nível de esforço por modo</div>
                       {([
