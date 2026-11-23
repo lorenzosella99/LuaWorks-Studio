@@ -863,7 +863,7 @@ export default function App() {
       { id: 'database', title: 'Supabase · Banco e RLS', status: 'running', detail: 'Consultando conversas com a sessão atual…' },
       { id: 'general', title: 'Código Geral · Groq', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'stormworks', title: 'Stormworks Lua · Groq + análise local', status: 'idle', detail: 'Aguardando teste contextual.' },
-      { id: 'image', title: 'Geração de imagens · Qwen + FLUX', status: 'idle', detail: 'Qwen interpreta o pedido; FLUX gera a imagem. O teste pode consumir créditos.' },
+      { id: 'image', title: 'Geração de imagens · Qwen + Gemini 3 Pro Image', status: 'idle', detail: 'Qwen interpreta o pedido; Gemini 3 Pro Image gera a imagem. O teste pode consumir créditos.' },
       { id: 'personality', title: 'Personalidade · OpenRouter', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'github', title: 'GitHub · Edge Function', status: 'idle', detail: 'Aguardando verificação de conexão.' },
     ];
