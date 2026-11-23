@@ -7,8 +7,13 @@ const OPENROUTER = "https://openrouter.ai/api/v1/chat/completions";
 const STORM_MODEL = "qwen/qwen3.8-27b";
 const CODE_MODEL = "openai/gpt-oss-120b";
 const PERSONA_MODEL = "openrouter/free";
-const IMAGE_MODEL = "google/gemini-3-pro-image";
+const IMAGE_MODELS = {
+  precision: "google/gemini-3-pro-image",
+  creative: "x-ai/grok-imagine-image-2.0",
+  realism: "black-forest-labs/flux.2-max",
+} as const;
 const IMAGE_PROMPT_MODEL = STORM_MODEL;
+type ImageProfile = keyof typeof IMAGE_MODELS;
 const CHAT_PROMPT = "Você é o AI Workbench, um assistente conversacional útil, natural e atento ao contexto. Responda no idioma usado pelo usuário. Em conversas comuns, seja direto, simpático e proporcional ao pedido; uma saudação como 'bom dia' merece uma saudação breve, não um texto longo. Não gere código, blocos de código, arquivos ou projetos a menos que o usuário peça isso claramente. Para perguntas, explique normalmente e use exemplos simples quando ajudarem. Use o histórico fornecido para manter continuidade e respeitar os requisitos já mencionados. Não invente fatos, ações ou testes executados.";
 const CODE_PROMPT = "Você é o AI Workbench, engenheiro full-stack sênior. Ajude com TypeScript, JavaScript, Python, SQL, APIs, arquitetura, segurança, testes e desenvolvimento web. Quando o usuário pedir código, entregue código completo e executável, com validação, tratamento de erros e instruções. Não invente testes que não executou. Priorize soluções corretas, legíveis e seguras.";
 const STORM_PROMPT = "Você é especialista em microcontroladores vanilla de Stormworks. REGRAS: cada bloco Lua tem no máximo 4096 caracteres; use somente callbacks onTick() e onDraw(); use apenas APIs input, output, screen, property, map, async, math, table e string. Nunca use os, io, require, package, debug, filesystem, rede ou bibliotecas externas. Não invente APIs, canais ou portas. Entregue código completo, explique canais de entrada/saída, valide divisões por zero e inicialização. Não prometa ausência de bugs; inclua testes. Retorne no máximo um bloco Markdown Lua com até 4096 caracteres. Se foi pedido código inteiro, nunca retorne trecho.";
@@ -168,7 +173,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   return answer + "\n\n_Análise estática Lua aprovada: limite de 4.096 caracteres por bloco, APIs bloqueadas e callback onTick/onDraw verificados. A execução real ainda deve ser conferida dentro do Stormworks._";
 }
 
-async function image(messages: Array<{role:"user"|"assistant";content:string}>) {
+async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown) {
   const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
   const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
@@ -202,7 +207,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>) 
   const res = await fetch("https://gen.pollinations.ai/v1/images/generations", {
     method: "POST",
     headers: { Authorization: "Bearer " + imageKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: IMAGE_MODEL, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
+    body: JSON.stringify({ model: imageModel, prompt: refinedPrompt.slice(0, 7000), n: 1, size: "1024x1024", response_format: "url" }),
   });
   const raw = await res.text();
   let data: any = {};
@@ -210,7 +215,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>) 
   if (!res.ok) throw new Error("Pollinations HTTP " + res.status + ": " + errText(data.error ?? raw.slice(0, 350)));
   const url = data?.data?.[0]?.url;
   if (typeof url !== "string" || !url.startsWith("https://")) throw new Error("Pollinations não retornou uma URL pública válida.");
-  return { url, refinedPrompt };
+  return { url, refinedPrompt, imageModel, profile };
 }
 
 Deno.serve(async (req: Request) => {
@@ -238,8 +243,8 @@ Deno.serve(async (req: Request) => {
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
     if (mode === "image") {
-      const generated = await image(messages);
-      return json({ image_url: generated.url, model: IMAGE_MODEL, prompt_model: IMAGE_PROMPT_MODEL, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
+      const generated = await image(messages, body.imageProfile);
+      return json({ image_url: generated.url, model: generated.imageModel, prompt_model: IMAGE_PROMPT_MODEL, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
     if (mode === "personality") {
