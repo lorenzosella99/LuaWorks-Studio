@@ -48,7 +48,7 @@ jobs:
       - name: Build web application
         working-directory: app
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
         env:
           VITE_SUPABASE_URL: https://zmwgrlvgzcxmepfnltal.supabase.co
@@ -175,7 +175,7 @@ jobs:
           cp -a "$ROOT/." "$DEBROOT/"
           cat > "$DEBROOT/DEBIAN/control" <<'CONTROL'
           Package: ai-workbench
-          Version: 1.0.0
+          Version: 1.1.0
           Section: devel
           Priority: optional
           Architecture: all
@@ -194,7 +194,7 @@ jobs:
           tar -czf "$TOP/SOURCES/ai-workbench-root.tar.gz" -C "$RUNNER_TEMP/ai-workbench-root" .
           cat > "$TOP/SPECS/ai-workbench.spec" <<'SPEC'
           Name: ai-workbench
-          Version: 1.0.0
+          Version: 1.1.0
           Release: 1
           Summary: AI Workbench - ambiente de criação e programação
           License: Proprietary
@@ -221,7 +221,7 @@ jobs:
           /usr/share/icons/hicolor/512x512/apps/ai-workbench.png
           SPEC
           rpmbuild --define "_topdir $TOP" -bb "$TOP/SPECS/ai-workbench.spec"
-          cp "$TOP/RPMS/noarch/ai-workbench-1.0.0-1.noarch.rpm" "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm"
+          cp "$TOP/RPMS/noarch/ai-workbench-1.1.0-1.noarch.rpm" "$RUNNER_TEMP/AI-Workbench-Fedora-openSUSE.rpm"
 
       - name: Build universal Linux AppImage
         run: |
@@ -285,7 +285,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: AI Workbench — Downloads
+          name: AI Workbench — v1.1.0
           target_commitish: main
           body: |
             Downloads oficiais do AI Workbench.
