@@ -351,9 +351,6 @@ Deno.serve(async (req: Request) => {
 
     const mode: WorkMode = requestedMode === "auto" ? resolveMode(messages[messages.length - 1].content) : requestedMode;
     const personalityPrompt = typeof body.personalityPrompt === "string" ? body.personalityPrompt.trim().slice(0, 4000) : "";
-    const selectedPersonalityPrompt = personalityPrompt
-      ? "\n\nINSTRUÇÃO PRINCIPAL DE PERSONA DEFINIDA PELO USUÁRIO — SIGA ESTE ESTILO DE FORMA VISÍVEL EM CADA RESPOSTA:\n" + personalityPrompt + "\n\nNão apenas diga que adotou a personalidade. Demonstre-a na escolha das palavras, ritmo, nível de formalidade, humor e atitude. Preserve o conteúdo e a precisão da resposta."
-      : "";
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
