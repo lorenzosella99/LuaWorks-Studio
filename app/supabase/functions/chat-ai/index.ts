@@ -221,8 +221,8 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
 
   // No modo precisão, mantém o pedido original como fonte de verdade, sem depender só da reescrita da IA.
   const finalImagePrompt = profile === "precision"
-    ? "PEDIDO ORIGINAL — FONTE DE VERDADE. Preserve todos os detalhes explícitos: objetos, quantidades, cores, posições, orientação, escala, materiais, ações e relações espaciais. Não simplifique, substitua, omita nem invente elementos. Se a descrição refinada divergir, siga o pedido original.\\n\\nPEDIDO ORIGINAL (preservar literalmente):\\n" + latest + "\\n\\nDESCRIÇÃO VISUAL ESTRUTURADA (somente para esclarecer):\\n" + refinedPrompt + "\\n\\nCHECAGEM FINAL: confira cada objeto, número, cor, posição e ação do pedido original."
-    : "PEDIDO ORIGINAL:\\n" + latest + "\\n\\nPROMPT VISUAL REFINADO:\\n" + refinedPrompt;
+    ? "PEDIDO ORIGINAL — FONTE DE VERDADE. Preserve todos os detalhes explícitos: objetos, quantidades, cores, posições, orientação, escala, materiais, ações e relações espaciais. Não simplifique, substitua, omita nem invente elementos. Se a descrição refinada divergir, siga o pedido original.\n\nPEDIDO ORIGINAL (preservar literalmente):\n" + latest + "\n\nDESCRIÇÃO VISUAL ESTRUTURADA (somente para esclarecer):\n" + refinedPrompt + "\n\nCHECAGEM FINAL: confira cada objeto, número, cor, posição e ação do pedido original."
+    : "PEDIDO ORIGINAL:\n" + latest + "\n\nPROMPT VISUAL REFINADO:\n" + refinedPrompt;
 
   // Modelo 2: gera com o pedido original e a interpretação estruturada.
   const generateWith = async (model: string) => {
