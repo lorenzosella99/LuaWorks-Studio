@@ -863,7 +863,7 @@ export default function App() {
       { id: 'database', title: 'Supabase · Banco e RLS', status: 'running', detail: 'Consultando conversas com a sessão atual…' },
       { id: 'general', title: 'Código Geral · Groq', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'stormworks', title: 'Stormworks Lua · Groq + análise local', status: 'idle', detail: 'Aguardando teste contextual.' },
-      { id: 'image', title: 'Geração de imagens · Pollinations', status: 'idle', detail: 'Aguardando teste contextual. Pode consumir créditos.' },
+      { id: 'image', title: 'Geração de imagens · Qwen + FLUX', status: 'idle', detail: 'Qwen interpreta o pedido; FLUX gera a imagem. O teste pode consumir créditos.' },
       { id: 'personality', title: 'Personalidade · OpenRouter', status: 'idle', detail: 'Aguardando teste contextual.' },
       { id: 'github', title: 'GitHub · Edge Function', status: 'idle', detail: 'Aguardando verificação de conexão.' },
     ];
@@ -893,8 +893,9 @@ export default function App() {
         if (error) throw new Error(typeof data?.error === 'string' ? data.error : error.message);
         if (typeof data?.error === 'string') throw new Error(data.error);
         if (modeToTest === 'image') {
-          if (typeof data?.image_url !== 'string' || !data.image_url.startsWith('https://')) throw new Error('O provedor não retornou uma URL de imagem válida.');
-          updateProbe(id, 'ok', 'Pollinations respondeu com uma URL HTTPS; o pedido foi enviado junto com o contexto anterior. A imagem precisa ser aberta para inspeção visual.');
+          if (typeof data?.image_url !== 'string' || !data.image_url.startsWith('https://')) throw new Error('O gerador não retornou uma URL de imagem válida.');
+          if (typeof data?.prompt_model !== 'string' || typeof data?.model !== 'string') throw new Error('A imagem foi gerada, mas os dois modelos não foram confirmados na resposta.');
+          updateProbe(id, 'ok', 'Os dois modelos responderam: Qwen interpretou o pedido e FLUX gerou a imagem. A imagem precisa ser aberta para inspeção visual.');
           return;
         }
         const answer = typeof data?.answer === 'string' ? data.answer : '';
