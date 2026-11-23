@@ -324,9 +324,9 @@ Deno.serve(async (req: Request) => {
     for (const item of recentItems) {
       if ((item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") continue;
       const withoutInlineImages = item.content.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=\s]+/g, "[imagem anexada omitida do histórico]");
-      const content = withoutInlineImages.slice(-3500);
+      const content = withoutInlineImages.slice(-1500);
       total += content.length;
-      if (total > 14000) continue;
+      if (total > 12000) break;
       messages.push({ role: item.role, content });
     }
     if (!messages.length || messages[messages.length - 1].role !== "user") return json({ error: "A última mensagem deve ser do usuário." }, 400);
