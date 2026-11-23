@@ -350,6 +350,10 @@ Deno.serve(async (req: Request) => {
     if (!messages.length || messages[messages.length - 1].role !== "user") return json({ error: "A última mensagem deve ser do usuário." }, 400);
 
     const mode: WorkMode = requestedMode === "auto" ? resolveMode(messages[messages.length - 1].content) : requestedMode;
+    const personalityPrompt = typeof body.personalityPrompt === "string" ? body.personalityPrompt.trim().slice(0, 4000) : "";
+    const selectedPersonalityPrompt = personalityPrompt
+      ? "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (priorize esta definição, mantendo segurança e honestidade):\\n" + personalityPrompt
+      : "";
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
@@ -362,8 +366,9 @@ Deno.serve(async (req: Request) => {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
-      const initial = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: PERSONALITY_PROMPT }, ...messages], 0.8, headers);
-      const answer = await reviewAndImprove(OPENROUTER, key, PERSONA_MODEL, PERSONALITY_PROMPT, messages, initial, effort, headers, "personality");
+      const systemPrompt = PERSONALITY_PROMPT + selectedPersonalityPrompt;
+      const initial = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.8, headers);
+      const answer = await reviewAndImprove(OPENROUTER, key, PERSONA_MODEL, systemPrompt, messages, initial, effort, headers, "personality");
       return json({ answer, model: PERSONA_MODEL, selected_mode: mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
