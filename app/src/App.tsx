@@ -845,8 +845,40 @@ export default function App() {
       }
       await loadConversations();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ocorreu um erro ao enviar sua mensagem.';
-      showToast(message);
+      let message = error instanceof Error ? error.message : 'Ocorreu um erro ao enviar sua mensagem.';
+      const context = error && typeof error === 'object' && 'context' in error ? (error as { context?: unknown }).context : undefined;
+      if (context instanceof Response) {
+        try {
+          const payload = await context.clone().json();
+          if (typeof payload?.error === 'string') message = payload.error;
+          else if (typeof payload?.message === 'string') message = payload.message;
+        } catch { /* mantém a mensagem original */ }
+      }
+      const diagnostic = [
+        'ERRO DO AI WORKBENCH',
+        'Data: ' + new Date().toISOString(),
+        'Modo: ' + mode,
+        'Perfil de imagem: ' + imageProfile,
+        'Pedido enviado: ' + prompt,
+        'Detalhes: ' + message,
+      ].join('\\n');
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(diagnostic);
+        copied = true;
+      } catch {
+        try {
+          const field = document.createElement('textarea');
+          field.value = diagnostic;
+          field.style.position = 'fixed';
+          field.style.opacity = '0';
+          document.body.appendChild(field);
+          field.select();
+          copied = document.execCommand('copy');
+          field.remove();
+        } catch { copied = false; }
+      }
+      showToast(copied ? 'Erro copiado! Cole aqui na conversa para eu analisar.' : message + ' (Não foi possível copiar os detalhes.)');
       setDraft(prompt);
     } finally {
       setSending(false);
