@@ -243,18 +243,55 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   let url: string;
   let usedModel = imageModel;
   let usedFallback = false;
+  let provider = "pollinations";
   try {
     url = await generateWith(imageModel);
-  } catch (error) {
-    const status = error && typeof error === "object" && "status" in error ? Number((error as {status: unknown}).status) : 0;
-    // Alguns modelos exigem saldo pago. Se a conta só tiver saldo de missões,
-    // usa o gerador base que aceita esse tipo de saldo, em vez de falhar a Edge Function.
-    if (status !== 402 || imageModel === "black-forest-labs/flux.1-schnell") throw error;
-    usedModel = "black-forest-labs/flux.1-schnell";
-    usedFallback = true;
-    url = await generateWith(usedModel);
+  } catch (primaryError) {
+    const openRouterKey = Deno.env.get("OPENROUTER_IMAGE_API_KEY");
+    if (openRouterKey) {
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/images", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + openRouterKey,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://lorenzosella99.github.io/LuaWorks-Studio/",
+            "X-Title": "AI Workbench",
+          },
+          body: JSON.stringify({
+            model: "recraft/recraft-v4.1-flash-v2:free",
+            prompt: finalImagePrompt.slice(0, 7000),
+            aspect_ratio: "1:1",
+          }),
+        });
+        const raw = await response.text();
+        let data: any = {};
+        try { data = JSON.parse(raw); } catch {}
+        if (!response.ok) throw new Error("OpenRouter Images HTTP " + response.status + ": " + errText(data.error ?? raw.slice(0, 500)));
+        const image = data?.data?.[0];
+        if (typeof image?.b64_json === "string" && image.b64_json.length > 100) {
+          const mediaType = typeof image.media_type === "string" && image.media_type.startsWith("image/") ? image.media_type : "image/png";
+          url = "data:" + mediaType + ";base64," + image.b64_json;
+        } else if (typeof image?.url === "string" && image.url.startsWith("https://")) {
+          url = image.url;
+        } else {
+          throw new Error("OpenRouter não retornou uma imagem em formato reconhecido.");
+        }
+        usedModel = "recraft/recraft-v4.1-flash-v2:free";
+        provider = "openrouter";
+        usedFallback = true;
+      } catch (fallbackError) {
+        throw new Error("O gerador principal falhou (" + errText(primaryError) + ") e o reserva OpenRouter também falhou (" + errText(fallbackError) + ").");
+      }
+    } else {
+      const status = primaryError && typeof primaryError === "object" && "status" in primaryError ? Number((primaryError as {status: unknown}).status) : 0;
+      if (status !== 402 || imageModel === "black-forest-labs/flux.1-schnell") throw primaryError;
+      usedModel = "black-forest-labs/flux.1-schnell";
+      usedFallback = true;
+      url = await generateWith(usedModel);
+    }
   }
-  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, profile };
+  return { url, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile };
 }
 
 Deno.serve(async (req: Request) => {
