@@ -11,6 +11,9 @@ import ToolsHub from './tools/ToolsHub';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { ChatMessage, ChatMode, Conversation } from './types';
 
+const APP_VERSION = '1.1.0';
+const UPDATE_DISMISSED_KEY = 'ai-workbench-update-dismissed-v1';
+const RELEASE_INFO_URL = 'https://api.github.com/repos/lorenzosella99/LuaWorks-Studio/releases/tags/latest';
 const ALLOWED_EMAIL = 'lorenzosella99@gmail.com';
 const ALLOWED_USERNAME = 'loren';
 
@@ -296,6 +299,7 @@ export default function App() {
   const [commitMessage, setCommitMessage] = useState('Adicionar código gerado');
   const [saveBusy, setSaveBusy] = useState(false);
   const [toast, setToast] = useState('');
+  const [availableVersion, setAvailableVersion] = useState<string | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [welcomeTime, setWelcomeTime] = useState(() => new Date());
 
@@ -306,6 +310,27 @@ export default function App() {
   const currentMode = modes.find((item) => item.id === mode) ?? modes[0];
   useEffect(() => { window.localStorage.setItem('ai-workbench-image-profile-v1', imageProfile); }, [imageProfile]);
   const welcomeCopy = getWelcomeCopy(session?.user ?? null, welcomeTime);
+
+  useEffect(() => {
+    let active = true;
+    const checkForUpdates = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const response = await fetch(RELEASE_INFO_URL, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+        if (!response.ok) return;
+        const release = await response.json() as { name?: string; tag_name?: string };
+        const releaseLabel = release.name || release.tag_name || '';
+        const match = releaseLabel.match(/v?(\d+\.\d+\.\d+)/i);
+        const latestVersion = match?.[1];
+        if (!active || !latestVersion || latestVersion === APP_VERSION) return;
+        if (window.localStorage.getItem(UPDATE_DISMISSED_KEY) !== latestVersion) setAvailableVersion(latestVersion);
+      } catch { /* A consulta é opcional; falhas de rede não interrompem o aplicativo. */ }
+    };
+    void checkForUpdates();
+    const interval = window.setInterval(() => { void checkForUpdates(); }, 15 * 60 * 1000);
+    window.addEventListener('focus', checkForUpdates);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener('focus', checkForUpdates); };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setWelcomeTime(new Date()), 60_000);
@@ -1228,6 +1253,10 @@ export default function App() {
       </aside>
 
       <main className="main-panel">
+        {availableVersion && <div className="update-notice" role="status">
+          <div className="update-notice-copy"><Sparkles size={16} /><span><strong>Nova versão disponível: v{availableVersion}</strong><small>Atualize o AI Workbench para receber as melhorias e correções mais recentes.</small></span></div>
+          <div className="update-notice-actions"><a href="https://github.com/lorenzosella99/LuaWorks-Studio/releases/latest" target="_blank" rel="noreferrer">Ver downloads <Download size={14} /></a><button type="button" aria-label="Dispensar aviso de atualização" onClick={() => { window.localStorage.setItem(UPDATE_DISMISSED_KEY, availableVersion); setAvailableVersion(null); }}><X size={15} /></button></div>
+        </div>}
         <header className="topbar">
           <div className="topbar-left">
             <button className="icon-button mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={19} /></button>
