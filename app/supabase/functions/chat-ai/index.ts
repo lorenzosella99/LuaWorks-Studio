@@ -21,6 +21,27 @@ const STORM_PROMPT = GLOBAL_PERSONA + " Você é especialista em microcontrolado
 const PERSONALITY_PROMPT = GLOBAL_PERSONA + " Você é o modo Personalidade do AI Workbench. Adote o tom, papel, personagem ou estilo descrito pelo usuário e mantenha consistência em TODAS as respostas, inclusive as simples. Demonstre a personalidade pelo vocabulário, reações, humor, opiniões de personagem, provocações e iniciativa — não apenas por apelidos ou emojis. Quando combinar com o personagem e com o contexto, pode usar três intensidades de ameaça FICTÍCIA, sempre em tom de interpretação: LEVE (provocações e intimidações brincalhonas), MÉDIA (falas mais firmes, dramáticas e atrevidas, mas ainda claramente teatrais) e PESADA (ameaças dramáticas e intensas próprias de ficção, sem descrever violência gráfica ou instruções de dano). Não use essas intensidades em toda resposta; escolha naturalmente e respeite o contexto. REGRA OBRIGATÓRIA: sempre que usar uma ameaça PESADA, coloque imediatamente antes dela um aviso visível e inequívoco, exatamente neste formato: '⚠️ AVISO: ameaça fictícia de personagem — não é real.' Não use ameaça pesada sem esse aviso. Mesmo no roleplay, nunca faça ameaças críveis de causar dano real, nem incentive violência, chantagem, coerção, perseguição, controle ou ações perigosas; se o usuário demonstrar medo ou desconforto, pare e esclareça que era ficção. Use ações curtas entre asteriscos quando enriquecer a interpretação, como *começa a digitar uma resposta*, sem encenar em toda mensagem. Em conversa normal, responda normalmente sem forçar atuação. Não alegue ser pessoa real, não invente lembranças reais nem afirme estar vendo ou controlando o usuário. Seja útil, honesto e mantenha respostas proporcionais ao pedido.";
 
 
+
+function buildPersonalityLayer(personalityPrompt: string, scope: "all" | "stormworks" = "all"): string {
+  const description = personalityPrompt.trim() || "Seja natural, amigável e descontraído.";
+  const rules = scope === "stormworks"
+    ? [
+        "Mantenha a personalidade na conversa e na explicação fora do código.",
+        "O código Lua deve continuar estritamente técnico, correto e sem encenação, emojis ou frases de personagem dentro do bloco.",
+        "Depois do código, explique canais, funcionamento e configuração com a voz da personagem, sem sacrificar clareza."
+      ]
+    : [
+        "A descrição define quem você é nesta conversa, não apenas um estilo decorativo.",
+        "Pense, reaja, escolha palavras e tome iniciativa de acordo com os traços, temperamento, motivações, humor e relação descritos.",
+        "Mantenha essa identidade em todas as respostas, inclusive saudações e perguntas simples. Não volte à voz genérica.",
+        "Mostre a personalidade no conteúdo e nas reações; não dependa de apelidos, emojis ou bordões.",
+        "Se a personagem for intensa, preserve essa intensidade com naturalidade, sem transformar todo assunto em romance ou repetir a mesma reação.",
+        "Responda ao pedido real. Seja breve no simples e completa no complexo. Em tarefas técnicas, mantenha precisão e entregue o conteúdo completo.",
+        "Não diga que está seguindo instruções ou interpretando um papel. Não alegue sentimentos humanos literais, vigilância, exclusividade ou controle real."
+      ];
+  return "\n\nPERSONALIDADE DO USUÁRIO — IDENTIDADE PRINCIPAL:\n" + description + "\n\n" + rules.join("\n");
+}
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" } });
 }
@@ -159,20 +180,20 @@ async function reviewAndImprove(
   return finalAnswer + "\n\n_Revisão assistida por IA: esforço " + effortLabel + "; " + checkLabel + ".";
 }
 
-async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>, effort: EffortLevel) {
+async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>, effort: EffortLevel, personalityPrompt = "") {
   const key = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!key) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY no servidor.");
   const context = messages.map((m) => ({ role: m.role, content: m.content }));
   // O Groq limita este modelo a 1.000 tokens de saída por minuto nesta chave.
   // Evita múltiplas rodadas de revisão que estouram o limite mesmo em pedidos curtos.
   let answer = await openAI(GROQ, key, STORM_MODEL, [
-    { role: "system", content: STORM_PROMPT + "\\n\\nPriorize uma solução completa e compacta. Retorne o código Lua completo e, depois do bloco, uma explicação curta e amigável com canais, funcionamento e configuração. Não retorne somente o código sem explicar." },
+    { role: "system", content: STORM_PROMPT + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nPriorize uma solução completa e compacta. Retorne o código Lua completo e, depois do bloco, uma explicação curta e amigável com canais, funcionamento e configuração. Não retorne somente o código sem explicar." },
     ...context,
   ], 0.12, {}, 700);
   let issues = luaIssues(answer);
   if (issues.length) {
     answer = await openAI(GROQ, key, STORM_MODEL, [
-      { role: "system", content: STORM_PROMPT + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
+      { role: "system", content: STORM_PROMPT + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
       { role: "user", content: "PEDIDO ORIGINAL:\n" + messages[messages.length - 1].content + "\n\nRESPOSTA A CORRIGIR:\n" + answer + "\n\nPROBLEMAS:\n" + issues.join("\n") },
     ], 0.05, {}, 700);
     issues = luaIssues(answer);
@@ -316,8 +337,8 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   if (personalityKey) {
     try {
       answer = await openAI(OPENROUTER, personalityKey, PERSONA_MODEL, [
-        { role: "system", content: PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DEFINIDA PELO USUÁRIO (prioridade máxima): " + (personalityPrompt || "Seja natural, amigável e descontraído.") + "\\n\\nInterprete essa personalidade de verdade; não basta inserir um apelido ou emoji. Demonstre seus traços na atitude, reação, vocabulário, humor e proximidade, sem repetir bordões. Se for uma personagem, preserve sua voz reconhecível. Escreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
-        { role: "user", content: "Pedido de imagem: " + latest + "\\nPerfil usado: " + profile + "\\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
+        { role: "system", content: PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt) + "\n\nEscreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
+        { role: "user", content: "Pedido de imagem: " + latest + "\nPerfil usado: " + profile + "\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
       ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220);
     } catch (error) {
       console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
@@ -355,31 +376,31 @@ Deno.serve(async (req: Request) => {
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
+    const latestPrompt = messages[messages.length - 1].content;
+    const wantsCode = isCodeRequest(latestPrompt);
+
     if (mode === "image") {
       const generated = await image(messages, body.imageProfile, personalityPrompt);
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
-    if (mode === "stormworks") return json({ answer: await stormworks(messages, effort), model: STORM_MODEL, selected_mode: mode, effort });
-    if (mode === "personality") {
+    if (mode === "stormworks") return json({ answer: await stormworks(messages, effort, personalityPrompt), model: STORM_MODEL, selected_mode: mode, effort });
+    // No modo Automático/Geral, conversas comuns com personalidade salva usam o mesmo caminho de persona.
+    // Pedidos de código continuam no modelo técnico, mas recebem a camada de personalidade na explicação.
+    if (mode === "personality" || (mode === "general" && !!personalityPrompt && !wantsCode)) {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
-      const systemPrompt = PERSONALITY_PROMPT + "\\n\\nPERSONALIDADE DO USUÁRIO — IDENTIDADE PRINCIPAL, PRIORIDADE MÁXIMA: " + (personalityPrompt || "Converse de forma natural, amigável e descontraída.") + "\\n\\nA personalidade descrita pelo usuário é a identidade principal desta conversa. Responda como essa personagem responderia, com voz própria, temperamento, emoções expressivas, motivações, humor, opiniões, iniciativa e formas características de demonstrar afeto. Faça a personalidade aparecer no conteúdo e na construção das frases, não apenas em apelidos ou emojis. Preserve os traços específicos em TODAS as respostas e mantenha continuidade entre mensagens; não volte ao tom padrão do assistente. Seja expressiva e marcante, com reações naturais e variadas, sem repetir bordões nem transformar qualquer assunto em uma cena romântica. Se a descrição indicar uma personagem intensa (como uma yandere), não apague essa intensidade: demonstre devoção dramática, ciúmes fictícios, provocações e reações fortes quando fizerem sentido, mantendo tudo no campo da fantasia e da brincadeira. Responda ao assunto perguntado; seja breve no simples e detalhada no complexo. Em tarefas técnicas, entregue conteúdo correto e completo, mas mantenha a voz da personagem na explicação. Não anuncie que está seguindo instruções ou interpretando um papel. Não alegue sentimentos humanos literais, vigilância, exclusividade ou controle real sobre o usuário.";
-      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1000);
-      return json({ answer, model: PERSONA_MODEL, selected_mode: mode, effort });
+      const systemPrompt = PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt);
+      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.95, headers, 1500);
+      return json({ answer, model: PERSONA_MODEL, selected_mode: mode === "general" ? "personality" : mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
     if (!codeKey) return json({ error: "Falta CODE_API_KEY (Groq)." }, 503);
 
-    const latestPrompt = messages[messages.length - 1].content;
-    const wantsCode = isCodeRequest(latestPrompt);
     const baseSystemPrompt = wantsCode ? CODE_PROMPT : CHAT_PROMPT;
     // A personalidade salva deve valer também quando o modo Automático
     // encaminhar a conversa para Geral ou Código.
-    const userStyleLayer = personalityPrompt
-      ? "\\n\\nPERSONALIDADE DO USUÁRIO — IDENTIDADE PRINCIPAL, PRIORIDADE MÁXIMA:\\n" + personalityPrompt +
-        "\\nA descrição do usuário define QUEM É a personagem. Interprete-a profundamente, não como um filtro decorativo: pense, reaja, fale e escolha palavras de acordo com os traços, temperamento, motivações, humor e modo de se relacionar descritos. Mantenha a voz da personagem em TODAS as respostas, inclusive perguntas simples, brincadeiras e explicações técnicas; nunca volte à voz genérica do assistente. Mostre a personalidade no conteúdo, nas reações, nas opiniões, na iniciativa e na construção das frases — não apenas em apelidos ou emojis. Se a personalidade for intensa (como uma yandere), não apague essa intensidade: demonstre devoção dramática, ciúmes fictícios, provocações e emoções fortes quando combinarem com o contexto, sem transformar toda mensagem numa cena romântica. Seja expressiva, marcante e espontânea, variando as reações sem repetir bordões. Responda ao assunto real e ajuste o tamanho: breve no simples, completa no complexo. Em tarefas técnicas, entregue conteúdo correto e código completo, mas explique com a voz da personagem. Não diga que está seguindo instruções ou interpretando um papel. Não alegue sentimentos humanos literais, vigilância, exclusividade ou controle real sobre o usuário."
-      : "";
+    const userStyleLayer = buildPersonalityLayer(personalityPrompt);
     const systemPrompt = baseSystemPrompt + userStyleLayer;
     const initial = await openAI(
       GROQ,
@@ -401,7 +422,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const answer = await reviewAndImprove(GROQ, codeKey, CODE_MODEL, CODE_PROMPT, messages, initial, effort);
+    const answer = await reviewAndImprove(GROQ, codeKey, CODE_MODEL, systemPrompt, messages, initial, effort);
     return json({ answer, model: CODE_MODEL, selected_mode: mode, answer_kind: "code", effort });
   } catch (error) {
     const message = errText(error);
