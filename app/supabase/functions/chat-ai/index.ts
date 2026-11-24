@@ -219,7 +219,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   let issues = luaIssues(answer);
   if (issues.length) {
     answer = await openAI(GROQ, key, STORM_MODEL, [
-      { role: "system", content: STORM_PROMPT + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
+      { role: "system", content: STORM_PROMPT + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
       { role: "user", content: "PEDIDO ORIGINAL:\n" + messages[messages.length - 1].content + "\n\nRESPOSTA A CORRIGIR:\n" + answer + "\n\nPROBLEMAS:\n" + issues.join("\n") },
     ], 0.05, {}, 700);
     issues = luaIssues(answer);
