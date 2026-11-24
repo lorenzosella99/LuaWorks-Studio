@@ -226,7 +226,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   let issues = luaIssues(answer);
   if (issues.length) {
     answer = await openAI(GROQ, key, STORM_MODEL, [
-      { role: "system", content: STORM_PROMPT + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
+      { role: "system", content: STORM_PROMPT + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nCorrija obrigatoriamente os problemas estáticos informados. Retorne o código completo, em um único bloco Lua, com até 4096 caracteres." },
       { role: "user", content: "PEDIDO ORIGINAL:\n" + messages[messages.length - 1].content + "\n\nRESPOSTA A CORRIGIR:\n" + answer + "\n\nPROBLEMAS:\n" + issues.join("\n") },
     ], 0.05, {}, 700);
     issues = luaIssues(answer);
@@ -235,7 +235,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   return answer + "\n\n_Análise estática Lua aprovada: limite de 4.096 caracteres por bloco, APIs bloqueadas e callback onTick/onDraw verificados. A execução real ainda deve ser conferida dentro do Stormworks._";
 }
 
-async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown, personalityPrompt: string, userGender: unknown = "nao_informar") {
+async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown, personalityPrompt: string, userGender: unknown = "nao_informar", aiPersonalityGender: unknown = "automatico") {
   const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
   const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
@@ -415,7 +415,7 @@ Deno.serve(async (req: Request) => {
     const wantsCode = isCodeRequest(latestPrompt);
 
     if (mode === "image") {
-      const generated = await image(messages, body.imageProfile, personalityPrompt, userGender);
+      const generated = await image(messages, body.imageProfile, personalityPrompt, userGender, aiPersonalityGender);
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort, personalityPrompt, userGender), model: STORM_MODEL, selected_mode: mode, effort });
