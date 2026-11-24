@@ -402,6 +402,33 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   return { url, answer, refinedPrompt, imageModel: usedModel, requestedImageModel: imageModel, usedFallback, provider, profile, promptInterpreter };
 }
 
+function decodeHtml(value: string): string {
+  return value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+}
+async function searchWeb(query: string) {
+  const endpoint = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query.slice(0, 240));
+  const response = await fetch(endpoint, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AIWorkbench/1.0)", "Accept": "text/html" } });
+  if (!response.ok) throw new Error("O serviço de pesquisa respondeu HTTP " + response.status + ".");
+  const html = await response.text();
+  const results: Array<{title:string;url:string;snippet:string}> = [];
+  const blocks = html.split(/<div[^>]+class="[^"]*result results_links[^"]*"[^>]*>/i).slice(1);
+  for (const block of blocks) {
+    const link = block.match(/<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!link) continue;
+    const snippetMatch = block.match(/<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    let url = decodeHtml(link[1]);
+    try {
+      const parsed = new URL(url.startsWith("//") ? "https:" + url : url);
+      const redirect = parsed.searchParams.get("uddg");
+      url = redirect ? decodeURIComponent(redirect) : parsed.toString();
+    } catch { continue; }
+    if (!/^https?:\/\//i.test(url)) continue;
+    const clean = (value: string) => decodeHtml(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+    results.push({ title: clean(link[2]), url, snippet: clean(snippetMatch?.[1] || snippetMatch?.[2] || "") });
+    if (results.length >= 7) break;
+  }
+  return results;
+}
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
@@ -410,7 +437,15 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => null);
     if (!body || !Array.isArray(body.messages)) return json({ error: "Envie messages[]." }, 400);
     const requestedMode = body.mode;
-    if (!["auto", "general", "stormworks", "image", "personality", "conversation"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
+    if (!["auto", "general", "stormworks", "image", "personality", "conversation", "research"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
+    if (requestedMode === "research") {
+      const query = typeof body.query === "string" ? body.query.trim() : (typeof body.messages?.[0]?.content === "string" ? body.messages[0].content.trim() : "");
+      if (!query) return json({ error: "Informe o que deseja pesquisar." }, 400);
+      const sources = await searchWeb(query);
+      if (!sources.length) return json({ error: "A pesquisa não retornou fontes. Tente reformular a busca." }, 502);
+      const answer = "Encontrei " + sources.length + " fontes para \"" + query + "\". Confira os títulos, resumos e links abaixo. Compare as fontes e verifique a data de publicação antes de tomar decisões importantes.";
+      return json({ answer, sources, selected_mode: "research", answer_kind: "research" });
+    }
     const messages: Array<{role:"user"|"assistant";content:string}> = [];
     // Evita reenviar imagens Base64 e históricos gigantes ao modelo de texto.
     // O pedido atual é preservado; o contexto anterior fica limitado às 8 mensagens mais recentes.
@@ -430,6 +465,10 @@ Deno.serve(async (req: Request) => {
     const personalityPrompt = typeof body.personalityPrompt === "string" ? body.personalityPrompt.trim().slice(0, 4000) : "";
     const userGender = ["masculino", "feminino", "nao_binario", "nao_informar"].includes(body.userGender) ? body.userGender : "nao_informar";
     const aiPersonalityGender = ["automatico", "masculino", "feminino", "neutro"].includes(body.aiPersonalityGender) ? body.aiPersonalityGender : "automatico";
+    const memoryContext = typeof body.memoryContext === "string" ? body.memoryContext.trim().slice(0, 6000) : "";
+    const relationshipContext = typeof body.relationshipContext === "string" ? body.relationshipContext.trim().slice(0, 1200) : "";
+    const memoryLayer = (memoryContext ? "\\n\\nMEMÓRIAS EXPLÍCITAS DO USUÁRIO (use somente quando relevantes; não invente):\\n" + memoryContext : "")
+      + (relationshipContext ? "\\n\\nPERFIL DE VÍNCULO FICTÍCIO CONFIGURADO PELO USUÁRIO:\\n" + relationshipContext : "");
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
@@ -451,7 +490,7 @@ Deno.serve(async (req: Request) => {
         "Em conversa normal, responda normalmente sem forçar atuação.",
         "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
       );
-      const systemPrompt = conversationBase + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt)
+      const systemPrompt = conversationBase + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt) + memoryLayer
         + "\\n\\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\\n\\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
       const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
       return json({ answer: result.answer, model: result.model, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
@@ -465,7 +504,7 @@ Deno.serve(async (req: Request) => {
       const systemPrompt = PERSONALITY_PROMPT.replace(
         "Em conversa normal, responda normalmente sem forçar atuação.",
         "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
-      ) + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt);
+      ) + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt) + memoryLayer;
       const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 0.95, headers, 1500);
       return json({ answer: result.answer, model: result.model, selected_mode: mode === "general" ? "personality" : mode, effort });
     }
@@ -476,7 +515,7 @@ Deno.serve(async (req: Request) => {
     // A personalidade salva deve valer também quando o modo Automático
     // encaminhar a conversa para Geral ou Código.
     const userStyleLayer = buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt);
-    const systemPrompt = baseSystemPrompt + userStyleLayer;
+    const systemPrompt = baseSystemPrompt + userStyleLayer + memoryLayer;
     const initial = await openAI(
       GROQ,
       codeKey,
