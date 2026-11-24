@@ -463,6 +463,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .personality-gender-select { width: 100%; min-height: 39px; padding: 0 11px; color: #e8e8e8; background: #121212; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; outline: none; font: 11px 'DM Sans', sans-serif; }
 .personality-gender-select:focus { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 
+.personality-gender-control { display: flex; flex-direction: column; gap: 7px; color: #aaa; font-size: 10px; }
+.personality-gender-select { width: 100%; min-height: 39px; padding: 0 11px; color: #e8e8e8; background: #121212; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; outline: none; font: 11px 'DM Sans', sans-serif; }
+.personality-gender-select:focus { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+
 /* Preferência de personalidade persistente */
 .personality-preference-section { gap: 10px; }
 .personality-preference-input { width: 100%; min-height: 112px; resize: vertical; padding: 11px 12px; color: #dedede; background: #121212; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; outline: none; font: 11px/1.55 'Manrope', sans-serif; }
