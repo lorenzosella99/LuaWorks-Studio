@@ -3,7 +3,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import type { CSSProperties } from 'react';
 import {
   ArrowDown, ArrowUp, Bot, Check, ChevronDown, Code2, Download, Github, Image as ImageIcon,
-  LogOut, Menu, MessageSquare, MessageCircleHeart, Monitor, Package, Plus, Settings2, SlidersHorizontal, Smartphone, Sparkles, Trash2, X, Zap, Wrench,
+  LogOut, Menu, MessageSquare, MessageCircle, MessageCircleHeart, Monitor, Package, Plus, Settings2, SlidersHorizontal, Smartphone, Sparkles, Trash2, X, Zap, Wrench,
 } from 'lucide-react';
 import MarkdownMessage from './components/MarkdownMessage';
 import LuaValidator from './components/LuaValidator';
