@@ -950,6 +950,8 @@ export default function App() {
         const assistantMessage = await persistMessage(conversationId, 'assistant', modeNotice + data.answer);
         setMessages((items) => items.some((item) => item.id === assistantMessage.id) ? items : [...items, assistantMessage]);
       }
+      const { data: currentBond } = await supabase.from('ai_relationship_profiles').select('bond_level,mood,interaction_count,notes').eq('user_id', session.user.id).maybeSingle();
+      await supabase.from('ai_relationship_profiles').upsert({ user_id: session.user.id, bond_level: currentBond?.bond_level ?? 0, mood: currentBond?.mood ?? 'neutro', interaction_count: (currentBond?.interaction_count ?? 0) + 1, notes: currentBond?.notes ?? '', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       await loadConversations();
     } catch (error) {
       let message = error instanceof Error
