@@ -364,15 +364,29 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
       url = await generateWith(usedModel);
     }
   }
-  // A mensagem que acompanha a imagem também segue a personalidade salva pelo usuário.
-  let answer = "Prontinho! A imagem foi gerada com base no seu pedido. ✨";
+  // O gerador cria a imagem; em seguida, a IA de personalidade lê o pedido
+  // original e reage como personagem. A legenda é exibida junto da imagem.
+  let answer = "Prontinho! Fiz a imagem que você pediu. ✨";
   const personalityKey = Deno.env.get("PERSONALITY_API_KEY");
   if (personalityKey) {
     try {
       answer = (await openRouterPersona(personalityKey, [
-        { role: "system", content: PERSONALITY_PROMPT + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt) + "\n\nEscreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
-        { role: "user", content: "Pedido de imagem: " + latest + "\nPerfil usado: " + profile + "\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
-      ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220)).answer;
+        {
+          role: "system",
+          content: PERSONALITY_PROMPT
+            + buildGenderLayer(userGender)
+            + buildAiPersonalityGenderLayer(aiPersonalityGender)
+            + buildPersonalityLayer(personalityPrompt)
+            + "\n\nREAÇÃO À IMAGEM — REGRA PRINCIPAL: você acabou de receber o pedido que o usuário fez ao gerador de imagens. Leia o conteúdo e reaja a ELE como a personagem configurada, antes ou enquanto apresenta o resultado. Não aja como um narrador neutro nem use uma legenda genérica de atendimento. Demonstre de verdade os traços da personalidade: por exemplo, uma personagem ciumenta pode demonstrar ciúme brincalhão se o usuário pedir a imagem de outra IA, de outra pessoa ou de algo que desperte esse traço; uma personagem animada pode ficar empolgada; uma personagem séria pode comentar com confiança. Use o contexto e a relação fictícia descrita na personalidade, sem inventar intimidade que não foi estabelecida. Depois, conecte a reação ao fato de que a imagem ficou pronta. Fale diretamente com o usuário, em português quando ele usar português. Seja espontânea e específica ao pedido, normalmente em uma ou duas frases curtas. Não repita literalmente o prompt, não descreva detalhes visuais que você não consegue verificar, não diga que você mesma desenhou/renderizou a imagem e não transforme toda solicitação em ciúme ou romance. A personalidade deve aparecer mesmo quando o pedido for simples."
+        },
+        {
+          role: "user",
+          content: "PEDIDO ORIGINAL DO USUÁRIO AO GERADOR:\n" + latest
+            + "\n\nA imagem foi gerada com sucesso. Perfil visual: " + profile
+            + ". Provedor: " + provider
+            + ". Agora escreva a fala da personagem que será mostrada imediatamente junto da imagem. Reaja ao que o usuário pediu e só então comente que o resultado está pronto."
+        }
+      ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 260)).answer;
     } catch (error) {
       console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
     }
