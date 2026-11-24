@@ -122,13 +122,21 @@ function isEffortLevel(value: unknown): value is EffortLevel {
 
 function resolveMode(prompt: string): WorkMode {
   if (/stormworks|microcontrolador|micro\s*controlador|\bonTick\b|\bonDraw\b|lua\s+vanilla/i.test(prompt)) return "stormworks";
-  // Descrições visuais naturais também acionam imagens no modo automático,
-  // mesmo sem verbos como "gere" ou "crie". Ex.: "um avião com o eclipse de fundo".
-  if (/(?:gere|gerar|crie|criar|desenhe|desenhar|produza|produzir)\s+(?:uma?\s+)?(?:imagem|arte|ilustra[cç][aã]o)|imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital|\b(?:de fundo|ao fundo|no fundo|in the background|background|em cima de|sobre|ao lado de|atr[aá]s de|na frente de|dentro de|em volta de|ao redor de|cada uma|cada um)\b/i.test(prompt)) return "image";
+
+  // Detecta pedidos de imagem mesmo quando o usuário escreve apenas o nome
+  // do resultado desejado: "imagem de outra IA", "uma foto de um gato",
+  // "desenho de um avião". Antes, esses pedidos caíam no modo Personalidade.
+  const directImageRequest =
+    /^\s*(?:uma?\s+)?(?:imagem|foto|fotografia|retrato|desenho|ilustra[cç][aã]o|arte)\s+(?:de|do|da|dos|das|dum|duma|sobre|mostrando|com)\b/i.test(prompt) ||
+    /^\s*(?:uma?\s+)?(?:imagem|foto|fotografia|retrato|desenho|ilustra[cç][aã]o|arte)\s*$/i.test(prompt) ||
+    /\b(?:gere|gerar|crie|criar|desenhe|desenhar|produza|produzir|faça|fazer|quero|mostre|mostrar)\b.{0,45}\b(?:imagem|foto|fotografia|retrato|desenho|ilustra[cç][aã]o|arte)\b/i.test(prompt);
+  const visualDescription =
+    /imagem\s+de\s+refer[eê]ncia|ilustra[cç][aã]o\s+digital|\b(?:de fundo|ao fundo|no fundo|in the background|background|em cima de|sobre|ao lado de|atr[aá]s de|na frente de|dentro de|em volta de|ao redor de|cada uma|cada um)\b/i.test(prompt);
+  if (directImageRequest || visualDescription) return "image";
+
   if (/modo personalidade|personalidade|interprete|finja\s+ser|aja\s+como|roleplay|converse\s+como|estilo\s+de\s+fala/i.test(prompt)) return "personality";
   return "general";
 }
-
 function isCodeRequest(prompt: string): boolean {
   if (/\x60{3}/.test(prompt)) return true;
 
