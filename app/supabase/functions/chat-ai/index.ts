@@ -30,10 +30,10 @@ function buildGenderLayer(userGender: unknown): string {
 }
 
 function buildAiPersonalityGenderLayer(aiGender: unknown): string {
-  if (aiGender === "masculino") return "\\n\\nGÊNERO DA PERSONAGEM: sua identidade/persona é masculina. Fale de si no masculino em português (ex.: 'estou preparado', 'sou seu parceiro', 'fiquei animado'). Não altere o gênero do usuário.";
-  if (aiGender === "feminino") return "\\n\\nGÊNERO DA PERSONAGEM: sua identidade/persona é feminina. Fale de si no feminino em português (ex.: 'estou preparada', 'sou sua parceira', 'fiquei animada'). Não altere o gênero do usuário.";
-  if (aiGender === "neutro") return "\\n\\nGÊNERO DA PERSONAGEM: use identidade e linguagem neutras para falar de si em português. Prefira construções naturais sem flexões marcadas de gênero (ex.: 'estou com você', 'que bom poder ajudar'). Não altere o gênero do usuário.";
-  return "\\n\\nGÊNERO DA PERSONAGEM: automático. Siga o gênero e as formas de expressão indicados na própria personalidade configurada; se não houver indicação, escolha uma forma coerente com o personagem e mantenha consistência. Não confunda o gênero da personagem com o gênero do usuário.";
+  if (aiGender === "masculino") return "\n\nGÊNERO DA PERSONAGEM: sua identidade/persona é masculina. Fale de si no masculino em português (ex.: 'estou preparado', 'sou seu parceiro', 'fiquei animado'). Não altere o gênero do usuário.";
+  if (aiGender === "feminino") return "\n\nGÊNERO DA PERSONAGEM: sua identidade/persona é feminina. Fale de si no feminino em português (ex.: 'estou preparada', 'sou sua parceira', 'fiquei animada'). Não altere o gênero do usuário.";
+  if (aiGender === "neutro") return "\n\nGÊNERO DA PERSONAGEM: use identidade e linguagem neutras para falar de si em português. Prefira construções naturais sem flexões marcadas de gênero (ex.: 'estou com você', 'que bom poder ajudar'). Não altere o gênero do usuário.";
+  return "\n\nGÊNERO DA PERSONAGEM: automático. Siga o gênero e as formas de expressão indicados na própria personalidade configurada; se não houver indicação, escolha uma forma coerente com o personagem e mantenha consistência. Não confunda o gênero da personagem com o gênero do usuário.";
 }
 
 function buildPersonalityLayer(personalityPrompt: string, scope: "all" | "stormworks" = "all"): string {
@@ -467,8 +467,8 @@ Deno.serve(async (req: Request) => {
     const aiPersonalityGender = ["automatico", "masculino", "feminino", "neutro"].includes(body.aiPersonalityGender) ? body.aiPersonalityGender : "automatico";
     const memoryContext = typeof body.memoryContext === "string" ? body.memoryContext.trim().slice(0, 6000) : "";
     const relationshipContext = typeof body.relationshipContext === "string" ? body.relationshipContext.trim().slice(0, 1200) : "";
-    const memoryLayer = (memoryContext ? "\\n\\nMEMÓRIAS EXPLÍCITAS DO USUÁRIO (use somente quando relevantes; não invente):\\n" + memoryContext : "")
-      + (relationshipContext ? "\\n\\nPERFIL DE VÍNCULO FICTÍCIO CONFIGURADO PELO USUÁRIO:\\n" + relationshipContext : "");
+    const memoryLayer = (memoryContext ? "\n\nMEMÓRIAS EXPLÍCITAS DO USUÁRIO (use somente quando relevantes; não invente):\n" + memoryContext : "")
+      + (relationshipContext ? "\n\nPERFIL DE VÍNCULO FICTÍCIO CONFIGURADO PELO USUÁRIO:\n" + relationshipContext : "");
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
@@ -499,7 +499,7 @@ Deno.serve(async (req: Request) => {
         "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
       );
       const systemPrompt = conversationBase + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt) + memoryLayer
-        + "\\n\\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\\n\\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
+        + "\n\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\n\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
       const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
       return json({ answer: result.answer, model: result.model, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
     }
