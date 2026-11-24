@@ -233,6 +233,7 @@ const modes: Array<{ id: ChatMode; label: string; short: string; description: st
   { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · revisão e validação de código' },
   { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Criação visual a partir de descrições' },
   { id: 'personality', label: 'Personalidade', short: 'Persona', description: 'Converse com o estilo e personalidade que você definir' },
+  { id: 'conversation', label: 'Conversa', short: 'Conversa', description: 'Somente texto e bate-papo com uma API exclusiva de personalidade' },
 ];
 
 function formatDate(value: string) {
@@ -1318,7 +1319,7 @@ export default function App() {
               {sending && (
                 <article className="message-row message-row--assistant">
                   <div className="message-avatar message-avatar--assistant"><Sparkles size={15} /></div>
-                  <div className="message-body"><div className="message-author">Workbench<span>{mode === 'personality' ? 'digitando…' : 'gerando…'}</span></div><div className="typing-indicator"><i /><i /><i /></div></div>
+                  <div className="message-body"><div className="message-author">Workbench<span>{(mode === 'personality' || mode === 'conversation') ? 'digitando…' : 'gerando…'}</span></div><div className="typing-indicator"><i /><i /><i /></div></div>
                 </article>
               )}
             </div>
@@ -1334,13 +1335,13 @@ export default function App() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onComposerKeyDown}
-              placeholder={mode === 'image' ? 'Descreva a imagem que você quer criar…' : mode === 'stormworks' ? 'Descreva seu microcontrolador Stormworks…' : mode === 'personality' ? 'Descreva a personalidade, personagem ou estilo de conversa…' : 'Pergunte ou descreva o que você quer construir…'}
+              placeholder={mode === 'image' ? 'Descreva a imagem que você quer criar…' : mode === 'stormworks' ? 'Descreva seu microcontrolador Stormworks…' : mode === 'personality' ? 'Descreva a personalidade, personagem ou estilo de conversa…' : mode === 'conversation' ? 'Converse sobre qualquer assunto…' : 'Pergunte ou descreva o que você quer construir…'}
               rows={1}
               disabled={sending}
             />
             <div className="composer-bottom">
               <div className="composer-hints">
-                <span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Gerador de imagens' : mode === 'stormworks' ? 'Geração + revisão Lua' : mode === 'personality' ? 'Personalidade' : mode === 'auto' ? 'Seleção automática' : 'Código geral'}</span>
+                <span className="hint-chip"><Zap size={12} /> {mode === 'image' ? 'Gerador de imagens' : mode === 'stormworks' ? 'Geração + revisão Lua' : mode === 'personality' ? 'Personalidade' : mode === 'conversation' ? 'Bate-papo · texto' : mode === 'auto' ? 'Seleção automática' : 'Código geral'}</span>
                 <span className="keyboard-hint">Enter para enviar · Shift + Enter para nova linha</span>
               </div>
               <div className="composer-actions">
@@ -1353,7 +1354,7 @@ export default function App() {
                       <div className="chat-menu-heading">Modo de trabalho</div>
                       <div className="chat-mode-options">
                         {modes.map((item) => {
-                          const Icon = item.id === 'auto' ? Sparkles : item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : MessageCircleHeart;
+                          const Icon = item.id === 'auto' ? Sparkles : item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : item.id === 'conversation' ? MessageCircle : MessageCircleHeart;
                           return (
                             <button key={item.id} type="button" className={'chat-mode-option' + (mode === item.id ? ' chat-mode-option--active' : '')} onClick={() => { void changeMode(item.id); setModeMenuOpen(false); }}>
                               <Icon size={15} />
