@@ -230,7 +230,7 @@ function AppearanceSettingsPanel({ value, onChange }: { value: AppearanceSetting
 
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
   { id: 'auto', label: 'Automático', short: 'Auto', description: 'A IA escolhe o modo mais adequado para cada pedido' },
-  { id: 'general', label: 'Geral e Código', short: 'Geral', description: 'Conversa normal e programação quando você pedir' },
+  { id: 'general', label: 'Geral e Código', short: 'Geral', description: 'Conversa normal e programação quando você pedir' },\n  { id: 'agent', label: 'Modo agente', short: 'Agente', description: 'Planeja tarefas e executa etapas possíveis com validação' },
   { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · revisão e validação de código' },
   { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Criação visual a partir de descrições' },
   { id: 'personality', label: 'Personalidade', short: 'Persona', description: 'Converse com o estilo e personalidade que você definir' },
@@ -925,7 +925,7 @@ export default function App() {
       const memoryContext = (savedMemories ?? []).map((item) => '[' + item.category + '] ' + item.content).join('\\n').slice(0, 6000);
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, memoryContext, messages: history },
+        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, memoryContext, relationshipContext, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -1289,7 +1289,7 @@ export default function App() {
           </div>
         </header>
 
-        {view === 'lua-validator' ? <LuaValidator /> : view === 'tools' ? <ToolsHub /> : view === 'features' ? <WorkbenchFeatures userId={session.user.id} messages={messages} onSendToChat={(prompt) => { setView('chat'); setMode('auto'); setDraft(prompt); setSidebarOpen(false); window.setTimeout(() => inputRef.current?.focus(), 50); }} /> : <>
+        {view === 'lua-validator' ? <LuaValidator /> : view === 'tools' ? <ToolsHub /> : view === 'features' ? <WorkbenchFeatures userId={session.user.id} messages={messages} onSendToChat={(prompt, nextMode = 'auto') => { setView('chat'); setMode(nextMode); setDraft(prompt); setSidebarOpen(false); window.setTimeout(() => inputRef.current?.focus(), 50); }} /> : <>
         <div className="chat-scroll" ref={scrollRef} onScroll={(event) => {
           const el = event.currentTarget;
           setIsNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 140);
