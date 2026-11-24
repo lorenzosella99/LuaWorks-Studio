@@ -390,8 +390,12 @@ Deno.serve(async (req: Request) => {
       const key = Deno.env.get("CHAT_PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta CHAT_PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Conversation" };
-      const systemPrompt = PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt)
-        + "\n\nMODO CONVERSA — REGRA PRIORITÁRIA: esta experiência é exclusivamente para conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Mantenha a personalidade configurada muito presente, espontânea e consistente; reaja ao conteúdo real da mensagem, faça perguntas naturais quando fizer sentido e evite respostas genéricas. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
+      const conversationBase = PERSONALITY_PROMPT.replace(
+        "Em conversa normal, responda normalmente sem forçar atuação.",
+        "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
+      );
+      const systemPrompt = conversationBase + buildPersonalityLayer(personalityPrompt)
+        + "\\n\\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\\n\\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
       const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
       return json({ answer, model: PERSONA_MODEL, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
     }
