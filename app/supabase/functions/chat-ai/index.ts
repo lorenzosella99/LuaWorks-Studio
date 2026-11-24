@@ -114,7 +114,7 @@ function luaBlocks(response: string): string[] {
 }
 
 type EffortLevel = "low" | "medium" | "ultra";
-type WorkMode = "general" | "stormworks" | "image" | "personality" | "conversation";
+type WorkMode = "general" | "stormworks" | "image" | "personality" | "conversation" | "agent";
 
 function isEffortLevel(value: unknown): value is EffortLevel {
   return value === "low" || value === "medium" || value === "ultra";
@@ -437,7 +437,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => null);
     if (!body || !Array.isArray(body.messages)) return json({ error: "Envie messages[]." }, 400);
     const requestedMode = body.mode;
-    if (!["auto", "general", "stormworks", "image", "personality", "conversation", "research"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
+    if (!["auto", "general", "stormworks", "image", "personality", "conversation", "research", "agent"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
     if (requestedMode === "research") {
       const query = typeof body.query === "string" ? body.query.trim() : (typeof body.messages?.[0]?.content === "string" ? body.messages[0].content.trim() : "");
       if (!query) return json({ error: "Informe o que deseja pesquisar." }, 400);
@@ -475,6 +475,14 @@ Deno.serve(async (req: Request) => {
     const latestPrompt = messages[messages.length - 1].content;
     const wantsCode = isCodeRequest(latestPrompt);
 
+    if (mode === "agent") {
+      const key = Deno.env.get("CODE_API_KEY");
+      if (!key) return json({ error: "Falta CODE_API_KEY (Groq)." }, 503);
+      const agentPrompt = "MODO AGENTE DO AI WORKBENCH: trabalhe em etapas. 1) esclareça o objetivo em uma frase; 2) apresente um plano curto e ordenado; 3) execute agora as etapas que podem ser concluídas usando apenas o contexto e ferramentas realmente disponíveis nesta conversa; 4) para cada etapa que dependa de acesso a arquivos, computador, contas ou serviços externos, peça a autorização ou o material necessário; 5) valide criticamente o que produziu e informe limitações. Nunca alegue que clicou, instalou, pesquisou ou modificou algo se não realizou. Não invente resultados. Preserve a personalidade e seja objetivo.";
+      const agentSystem = agentPrompt + buildGenderLayer(userGender) + buildAiPersonalityGenderLayer(aiPersonalityGender) + buildPersonalityLayer(personalityPrompt) + memoryLayer;
+      const answer = await openAI(GROQ, key, CODE_MODEL, [{ role: "system", content: agentSystem }, ...messages], 0.35, {}, 5000);
+      return json({ answer, model: CODE_MODEL, selected_mode: "agent", answer_kind: "agent", effort: "n/a" });
+    }
     if (mode === "image") {
       const generated = await image(messages, body.imageProfile, personalityPrompt, userGender, aiPersonalityGender);
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
