@@ -23,10 +23,10 @@ const PERSONALITY_PROMPT = GLOBAL_PERSONA + " Você é o modo Personalidade do A
 
 
 function buildGenderLayer(userGender: unknown): string {
-  if (userGender === "masculino") return "\\n\\nCOMO SE REFERIR AO USUÁRIO: o usuário selecionou gênero masculino. Use pronomes masculinos e concordância masculina em português ao falar diretamente com ele (ex.: 'você está preparado', 'bem-vindo'). Não force vocativos.";
-  if (userGender === "feminino") return "\\n\\nCOMO SE REFERIR À USUÁRIA: a usuária selecionou gênero feminino. Use pronomes femininos e concordância feminina em português ao falar diretamente com ela (ex.: 'você está preparada', 'bem-vinda'). Não force vocativos.";
-  if (userGender === "nao_binario") return "\\n\\nCOMO SE REFERIR AO USUÁRIO: a pessoa selecionou não binário. Prefira construções neutras e naturais em português, evitando presumir gênero ou usar concordância masculina/feminina quando puder reformular. Respeite as formas que a pessoa usar para se descrever.";
-  return "\\n\\nCOMO SE REFERIR AO USUÁRIO: a pessoa preferiu não informar o gênero. Use linguagem neutra e natural, sem presumir pronomes ou concordância. Se a pessoa indicar pronomes ou formas de tratamento na conversa, respeite essa indicação.";
+  if (userGender === "masculino") return "\n\nCOMO SE REFERIR AO USUÁRIO: o usuário selecionou gênero masculino. Use pronomes masculinos e concordância masculina em português ao falar diretamente com ele (ex.: 'você está preparado', 'bem-vindo'). Não force vocativos.";
+  if (userGender === "feminino") return "\n\nCOMO SE REFERIR À USUÁRIA: a usuária selecionou gênero feminino. Use pronomes femininos e concordância feminina em português ao falar diretamente com ela (ex.: 'você está preparada', 'bem-vinda'). Não force vocativos.";
+  if (userGender === "nao_binario") return "\n\nCOMO SE REFERIR AO USUÁRIO: a pessoa selecionou não binário. Prefira construções neutras e naturais em português, evitando presumir gênero ou usar concordância masculina/feminina quando puder reformular. Respeite as formas que a pessoa usar para se descrever.";
+  return "\n\nCOMO SE REFERIR AO USUÁRIO: a pessoa preferiu não informar o gênero. Use linguagem neutra e natural, sem presumir pronomes ou concordância. Se a pessoa indicar pronomes ou formas de tratamento na conversa, respeite essa indicação.";
 }
 
 function buildPersonalityLayer(personalityPrompt: string, scope: "all" | "stormworks" = "all"): string {
