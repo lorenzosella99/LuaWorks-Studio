@@ -22,6 +22,13 @@ const PERSONALITY_PROMPT = GLOBAL_PERSONA + " Você é o modo Personalidade do A
 
 
 
+function buildGenderLayer(userGender: unknown): string {
+  if (userGender === "masculino") return "\\n\\nCOMO SE REFERIR AO USUÁRIO: o usuário selecionou gênero masculino. Use pronomes masculinos e concordância masculina em português ao falar diretamente com ele (ex.: 'você está preparado', 'bem-vindo'). Não force vocativos.";
+  if (userGender === "feminino") return "\\n\\nCOMO SE REFERIR À USUÁRIA: a usuária selecionou gênero feminino. Use pronomes femininos e concordância feminina em português ao falar diretamente com ela (ex.: 'você está preparada', 'bem-vinda'). Não force vocativos.";
+  if (userGender === "nao_binario") return "\\n\\nCOMO SE REFERIR AO USUÁRIO: a pessoa selecionou não binário. Prefira construções neutras e naturais em português, evitando presumir gênero ou usar concordância masculina/feminina quando puder reformular. Respeite as formas que a pessoa usar para se descrever.";
+  return "\\n\\nCOMO SE REFERIR AO USUÁRIO: a pessoa preferiu não informar o gênero. Use linguagem neutra e natural, sem presumir pronomes ou concordância. Se a pessoa indicar pronomes ou formas de tratamento na conversa, respeite essa indicação.";
+}
+
 function buildPersonalityLayer(personalityPrompt: string, scope: "all" | "stormworks" = "all"): string {
   const description = personalityPrompt.trim() || "Seja natural, amigável e descontraído.";
   const rules = scope === "stormworks"
@@ -199,14 +206,14 @@ async function reviewAndImprove(
   return finalAnswer + "\n\n_Revisão assistida por IA: esforço " + effortLabel + "; " + checkLabel + ".";
 }
 
-async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>, effort: EffortLevel, personalityPrompt = "") {
+async function stormworks(messages: Array<{role:"user"|"assistant";content:string}>, effort: EffortLevel, personalityPrompt = "", userGender: unknown = "nao_informar") {
   const key = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!key) throw new Error("Falta STORMWORKS_PRIMARY_API_KEY no servidor.");
   const context = messages.map((m) => ({ role: m.role, content: m.content }));
   // O Groq limita este modelo a 1.000 tokens de saída por minuto nesta chave.
   // Evita múltiplas rodadas de revisão que estouram o limite mesmo em pedidos curtos.
   let answer = await openAI(GROQ, key, STORM_MODEL, [
-    { role: "system", content: STORM_PROMPT + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nPriorize uma solução completa e compacta. Retorne o código Lua completo e, depois do bloco, uma explicação curta e amigável com canais, funcionamento e configuração. Não retorne somente o código sem explicar." },
+    { role: "system", content: STORM_PROMPT + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt, "stormworks") + "\n\nPriorize uma solução completa e compacta. Retorne o código Lua completo e, depois do bloco, uma explicação curta e amigável com canais, funcionamento e configuração. Não retorne somente o código sem explicar." },
     ...context,
   ], 0.12, {}, 700);
   let issues = luaIssues(answer);
@@ -221,7 +228,7 @@ async function stormworks(messages: Array<{role:"user"|"assistant";content:strin
   return answer + "\n\n_Análise estática Lua aprovada: limite de 4.096 caracteres por bloco, APIs bloqueadas e callback onTick/onDraw verificados. A execução real ainda deve ser conferida dentro do Stormworks._";
 }
 
-async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown, personalityPrompt: string) {
+async function image(messages: Array<{role:"user"|"assistant";content:string}>, requestedProfile: unknown, personalityPrompt: string, userGender: unknown = "nao_informar") {
   const imageKey = Deno.env.get("POLLINATIONS_API_KEY");
   const promptKey = Deno.env.get("STORMWORKS_PRIMARY_API_KEY");
   if (!imageKey) throw new Error("Falta POLLINATIONS_API_KEY no servidor.");
@@ -356,7 +363,7 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   if (personalityKey) {
     try {
       answer = (await openRouterPersona(personalityKey, [
-        { role: "system", content: PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt) + "\n\nEscreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
+        { role: "system", content: PERSONALITY_PROMPT + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt) + "\n\nEscreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
         { role: "user", content: "Pedido de imagem: " + latest + "\nPerfil usado: " + profile + "\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
       ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220)).answer;
     } catch (error) {
@@ -392,6 +399,7 @@ Deno.serve(async (req: Request) => {
 
     const mode: WorkMode = requestedMode === "auto" ? resolveMode(messages[messages.length - 1].content) : requestedMode;
     const personalityPrompt = typeof body.personalityPrompt === "string" ? body.personalityPrompt.trim().slice(0, 4000) : "";
+    const userGender = ["masculino", "feminino", "nao_binario", "nao_informar"].includes(body.userGender) ? body.userGender : "nao_informar";
     const effortSettings = body.effortByMode && typeof body.effortByMode === "object" ? body.effortByMode : {};
     const effort: EffortLevel = isEffortLevel(effortSettings[mode]) ? effortSettings[mode] : "medium";
 
@@ -399,10 +407,10 @@ Deno.serve(async (req: Request) => {
     const wantsCode = isCodeRequest(latestPrompt);
 
     if (mode === "image") {
-      const generated = await image(messages, body.imageProfile, personalityPrompt);
+      const generated = await image(messages, body.imageProfile, personalityPrompt, userGender);
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
-    if (mode === "stormworks") return json({ answer: await stormworks(messages, effort, personalityPrompt), model: STORM_MODEL, selected_mode: mode, effort });
+    if (mode === "stormworks") return json({ answer: await stormworks(messages, effort, personalityPrompt, userGender), model: STORM_MODEL, selected_mode: mode, effort });
     // Conversa é um modo isolado: usa somente a chave CHAT_PERSONALITY_API_KEY
     // e responde em texto, sem acionar gerador de imagens ou fluxo de programação.
     if (mode === "conversation") {
@@ -413,7 +421,7 @@ Deno.serve(async (req: Request) => {
         "Em conversa normal, responda normalmente sem forçar atuação.",
         "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
       );
-      const systemPrompt = conversationBase + buildPersonalityLayer(personalityPrompt)
+      const systemPrompt = conversationBase + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt)
         + "\\n\\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\\n\\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
       const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
       return json({ answer: result.answer, model: result.model, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
@@ -427,7 +435,7 @@ Deno.serve(async (req: Request) => {
       const systemPrompt = PERSONALITY_PROMPT.replace(
         "Em conversa normal, responda normalmente sem forçar atuação.",
         "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
-      ) + buildPersonalityLayer(personalityPrompt);
+      ) + buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt);
       const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 0.95, headers, 1500);
       return json({ answer: result.answer, model: result.model, selected_mode: mode === "general" ? "personality" : mode, effort });
     }
@@ -437,7 +445,7 @@ Deno.serve(async (req: Request) => {
     const baseSystemPrompt = wantsCode ? CODE_PROMPT : CHAT_PROMPT;
     // A personalidade salva deve valer também quando o modo Automático
     // encaminhar a conversa para Geral ou Código.
-    const userStyleLayer = buildPersonalityLayer(personalityPrompt);
+    const userStyleLayer = buildGenderLayer(userGender) + buildPersonalityLayer(personalityPrompt);
     const systemPrompt = baseSystemPrompt + userStyleLayer;
     const initial = await openAI(
       GROQ,
