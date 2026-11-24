@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Brain, Heart, Mic, MicOff, Play, Search, Send, Sparkles, Volume2, VolumeX, Workflow } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ChatMode } from '../types';
 import './WorkbenchFeatures.css';
 
 type Memory = { id: string; content: string; category: string; created_at: string };
 type Bond = { bond_level: number; mood: string; interaction_count: number; notes: string };
 type ResearchResult = { title: string; url: string; snippet: string };
-type Props = { userId: string; messages: ChatMessage[]; onSendToChat: (prompt: string) => void };
+type Props = { userId: string; messages: ChatMessage[]; onSendToChat: (prompt: string, mode?: ChatMode) => void };
 
 const emptyBond: Bond = { bond_level: 0, mood: 'neutro', interaction_count: 0, notes: '' };
 
@@ -118,7 +118,7 @@ export default function WorkbenchFeatures({ userId, messages, onSendToChat }: Pr
       </div>}
       {tab === 'agent' && <div className="feature-section"><h2><Workflow/> Modo agente</h2><p>Descreva um objetivo. A IA receberá instruções para planejar etapas, avançar com o que estiver disponível e separar ações que exigem sua autorização.</p>
         <textarea value={voiceText} onChange={(e) => setVoiceText(e.target.value)} placeholder="Ex.: Analise meu projeto, encontre erros e proponha uma correção segura…"/>
-        <button onClick={() => { onSendToChat(agentPrompt + voiceText.trim()); setVoiceText(''); }} disabled={!voiceText.trim()}><Play/> Iniciar tarefa no chat</button>
+        <button onClick={() => { onSendToChat(agentPrompt + voiceText.trim(), 'agent'); setVoiceText(''); }} disabled={!voiceText.trim()}><Play/> Iniciar tarefa no chat</button>
         <small>O agente não controla o computador sozinho nem executa ações externas sem integração e confirmação.</small>
       </div>}
       {tab === 'research' && <div className="feature-section"><h2><Search/> Pesquisa com fontes</h2><p>Pesquise na web e receba uma síntese acompanhada dos links consultados.</p>
