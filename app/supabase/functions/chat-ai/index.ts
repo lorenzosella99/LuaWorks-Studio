@@ -81,7 +81,7 @@ function luaBlocks(response: string): string[] {
 }
 
 type EffortLevel = "low" | "medium" | "ultra";
-type WorkMode = "general" | "stormworks" | "image" | "personality";
+type WorkMode = "general" | "stormworks" | "image" | "personality" | "conversation";
 
 function isEffortLevel(value: unknown): value is EffortLevel {
   return value === "low" || value === "medium" || value === "ultra";
@@ -355,7 +355,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => null);
     if (!body || !Array.isArray(body.messages)) return json({ error: "Envie messages[]." }, 400);
     const requestedMode = body.mode;
-    if (!["auto", "general", "stormworks", "image", "personality"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
+    if (!["auto", "general", "stormworks", "image", "personality", "conversation"].includes(requestedMode)) return json({ error: "Modo inválido." }, 400);
     const messages: Array<{role:"user"|"assistant";content:string}> = [];
     // Evita reenviar imagens Base64 e históricos gigantes ao modelo de texto.
     // O pedido atual é preservado; o contexto anterior fica limitado às 8 mensagens mais recentes.
@@ -384,6 +384,17 @@ Deno.serve(async (req: Request) => {
       return json({ image_url: generated.url, answer: generated.answer, model: generated.imageModel, requested_model: generated.requestedImageModel, used_fallback: generated.usedFallback, prompt_model: generated.promptInterpreter, image_profile: generated.profile, enhanced_prompt: generated.refinedPrompt, selected_mode: mode, effort: "n/a" });
     }
     if (mode === "stormworks") return json({ answer: await stormworks(messages, effort, personalityPrompt), model: STORM_MODEL, selected_mode: mode, effort });
+    // Conversa é um modo isolado: usa somente a chave CHAT_PERSONALITY_API_KEY
+    // e responde em texto, sem acionar gerador de imagens ou fluxo de programação.
+    if (mode === "conversation") {
+      const key = Deno.env.get("CHAT_PERSONALITY_API_KEY");
+      if (!key) return json({ error: "Falta CHAT_PERSONALITY_API_KEY (OpenRouter)." }, 503);
+      const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Conversation" };
+      const systemPrompt = PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt)
+        + "\\n\\nMODO CONVERSA — REGRA PRIORITÁRIA: esta experiência é exclusivamente para conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Mantenha a personalidade configurada muito presente, espontânea e consistente; reaja ao conteúdo real da mensagem, faça perguntas naturais quando fizer sentido e evite respostas genéricas. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
+      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
+      return json({ answer, model: PERSONA_MODEL, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
+    }
     // No modo Automático/Geral, conversas comuns com personalidade salva usam o mesmo caminho de persona.
     // Pedidos de código continuam no modelo técnico, mas recebem a camada de personalidade na explicação.
     if (mode === "personality" || (mode === "general" && !!personalityPrompt && !wantsCode)) {
