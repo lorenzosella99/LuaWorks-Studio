@@ -70,10 +70,29 @@ async function openAI(url: string, key: string, model: string, messages: Array<{
   const raw = await res.text();
   let data: any = {};
   try { data = JSON.parse(raw); } catch {}
-  if (!res.ok) throw new Error(model + " HTTP " + res.status + ": " + errText(data.error ?? raw.slice(0, 350)));
+  const providerError = data?.error ?? data?.choices?.[0]?.error;
+  if (!res.ok || providerError) throw new Error(model + " HTTP " + res.status + ": " + errText(providerError ?? raw.slice(0, 350)));
   const answer = data?.choices?.[0]?.message?.content;
   if (typeof answer !== "string" || !answer.trim()) throw new Error(model + " retornou resposta vazia.");
   return answer.trim();
+}
+
+// O roteador gratuito pode escolher um provedor que aceite a chamada, mas devolva conteúdo vazio.
+// Tenta modelos gratuitos independentes antes de declarar falha; nenhuma alternativa é paga.
+async function openRouterPersona(key: string, messages: Array<{ role: string; content: string }>, temperature: number, headers: Record<string, string>, maxTokens: number) {
+  const models = [PERSONA_MODEL, "inclusionai/ling-3.2-flash:free", "nvidia/nemotron-3.5-lightning:free", "baidu/ernie-5.5-flash-preview:free"];
+  let lastError: unknown;
+  for (const model of models) {
+    try {
+      const answer = await openAI(OPENROUTER, key, model, messages, temperature, headers, maxTokens);
+      if (model !== PERSONA_MODEL) console.warn("chat-ai: fallback gratuito de personalidade utilizado:", model);
+      return { answer, model };
+    } catch (error) {
+      lastError = error;
+      console.warn("chat-ai: modelo gratuito de personalidade falhou:", model, errText(error));
+    }
+  }
+  throw new Error("Todos os modelos gratuitos de personalidade falharam. " + errText(lastError));
 }
 function luaBlocks(response: string): string[] {
   const matches = Array.from(response.matchAll(/\x60{3}(?:lua)?[ \t]*\r?\n([\s\S]*?)\x60{3}/gi));
@@ -336,10 +355,10 @@ async function image(messages: Array<{role:"user"|"assistant";content:string}>, 
   const personalityKey = Deno.env.get("PERSONALITY_API_KEY");
   if (personalityKey) {
     try {
-      answer = await openAI(OPENROUTER, personalityKey, PERSONA_MODEL, [
+      answer = (await openRouterPersona(personalityKey, [
         { role: "system", content: PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt) + "\n\nEscreva uma mensagem curta e espontânea (uma ou duas frases) que acompanhe a imagem. Não repita o pedido nem invente detalhes visuais que não pode verificar." },
         { role: "user", content: "Pedido de imagem: " + latest + "\nPerfil usado: " + profile + "\nProvedor: " + provider + ". Escreva somente a mensagem que acompanha a imagem." }
-      ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220);
+      ], 0.95, { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench" }, 220)).answer;
     } catch (error) {
       console.warn("chat-ai: não foi possível personalizar a mensagem da imagem:", errText(error));
     }
@@ -396,8 +415,8 @@ Deno.serve(async (req: Request) => {
       );
       const systemPrompt = conversationBase + buildPersonalityLayer(personalityPrompt)
         + "\\n\\nMODO CONVERSA — PRIORIDADE MÁXIMA: você está conversando como a personagem descrita pelo usuário, não apenas escrevendo com alguns emojis ou apelidos. A descrição de personalidade é sua identidade principal nesta conversa e tem prioridade sobre o tom genérico do assistente. Demonstre-a em cada resposta por meio de reações, vocabulário, humor, atitude, opiniões da personagem, iniciativa e pequenas ações narrativas quando combinarem. Não espere o usuário pedir para atuar novamente. Até uma saudação ou pergunta simples deve soar como essa personagem, mas sem virar um texto enorme. Se a personagem for intensa, ciumenta, provocadora, tímida, sarcástica ou carinhosa, deixe esses traços aparecerem de forma natural e coerente com o assunto; não suavize tudo para uma resposta neutra. Evite repetir bordões e não transforme toda mensagem em romance. Se não houver personalidade configurada, converse de forma espontânea e amigável.\\n\\nLIMITES DO MODO: somente conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
-      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
-      return json({ answer, model: PERSONA_MODEL, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
+      const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
+      return json({ answer: result.answer, model: result.model, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
     }
     // No modo Automático/Geral, conversas comuns com personalidade salva usam o mesmo caminho de persona.
     // Pedidos de código continuam no modelo técnico, mas recebem a camada de personalidade na explicação.
@@ -405,9 +424,12 @@ Deno.serve(async (req: Request) => {
       const key = Deno.env.get("PERSONALITY_API_KEY");
       if (!key) return json({ error: "Falta PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Private" };
-      const systemPrompt = PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt);
-      const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 0.95, headers, 1500);
-      return json({ answer, model: PERSONA_MODEL, selected_mode: mode === "general" ? "personality" : mode, effort });
+      const systemPrompt = PERSONALITY_PROMPT.replace(
+        "Em conversa normal, responda normalmente sem forçar atuação.",
+        "Mesmo em conversas cotidianas, mantenha visível a identidade da personagem configurada; não abandone a atuação nem volte à voz genérica."
+      ) + buildPersonalityLayer(personalityPrompt);
+      const result = await openRouterPersona(key, [{ role: "system", content: systemPrompt }, ...messages], 0.95, headers, 1500);
+      return json({ answer: result.answer, model: result.model, selected_mode: mode === "general" ? "personality" : mode, effort });
     }
     const codeKey = Deno.env.get("CODE_API_KEY");
     if (!codeKey) return json({ error: "Falta CODE_API_KEY (Groq)." }, 503);
