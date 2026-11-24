@@ -284,6 +284,7 @@ export default function App() {
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
   const [personalityPrompt, setPersonalityPrompt] = useState('');
   const [userGender, setUserGender] = useState<'masculino' | 'feminino' | 'nao_binario' | 'nao_informar'>('nao_informar');
+  const [aiPersonalityGender, setAiPersonalityGender] = useState<'automatico' | 'masculino' | 'feminino' | 'neutro'>('automatico');
   const [personalitySaving, setPersonalitySaving] = useState(false);
   const [personalitySaved, setPersonalitySaved] = useState(true);
   const personalityDirtyRef = useRef(false);
@@ -496,7 +497,7 @@ export default function App() {
     const loadPreferences = async () => {
       const { data, error } = await client
         .from('user_preferences')
-        .select('appearance, effort_by_mode, preferred_mode, personality_prompt, user_gender')
+        .select('appearance, effort_by_mode, preferred_mode, personality_prompt, user_gender, ai_personality_gender')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -511,6 +512,7 @@ export default function App() {
         setEffortByMode(normalizeEffortSettings(data.effort_by_mode));
         setPersonalityPrompt(typeof data.personality_prompt === 'string' ? data.personality_prompt : '');
         setUserGender(data.user_gender === 'masculino' || data.user_gender === 'feminino' || data.user_gender === 'nao_binario' ? data.user_gender : 'nao_informar');
+        setAiPersonalityGender(data.ai_personality_gender === 'masculino' || data.ai_personality_gender === 'feminino' || data.ai_personality_gender === 'neutro' ? data.ai_personality_gender : 'automatico');
         personalityDirtyRef.current = false;
         setPersonalitySaved(true);
         if (modes.some((item) => item.id === data.preferred_mode)) {
@@ -526,6 +528,7 @@ export default function App() {
             preferred_mode: mode,
             personality_prompt: personalityPrompt,
             user_gender: userGender,
+            ai_personality_gender: aiPersonalityGender,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
         if (seedError && !cancelled) {
@@ -553,6 +556,7 @@ export default function App() {
       effort_by_mode: effortByMode,
       preferred_mode: mode,
       user_gender: userGender,
+      ai_personality_gender: aiPersonalityGender,
       updated_at: new Date().toISOString(),
     };
     const timeout = window.setTimeout(() => {
@@ -565,7 +569,7 @@ export default function App() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [appearance, effortByMode, mode, userGender, preferencesReadyFor, session?.user?.id, showToast]);
+  }, [appearance, effortByMode, mode, userGender, aiPersonalityGender, preferencesReadyFor, session?.user?.id, showToast]);
 
   // Uma única inscrição por conta: sem filtro de coluna no servidor, pois a validação
   // anterior rejeitava user_id; RLS e a checagem local continuam isolando os dados.
@@ -637,6 +641,7 @@ export default function App() {
             preferred_mode?: unknown;
             personality_prompt?: unknown;
             user_gender?: unknown;
+            ai_personality_gender?: unknown;
           };
           if (payload.eventType === 'DELETE' || incoming.user_id !== userId) return;
 
@@ -646,6 +651,8 @@ export default function App() {
           setEffortByMode((current) => JSON.stringify(current) === JSON.stringify(nextEfforts) ? current : nextEfforts);
           const nextGender = incoming.user_gender === 'masculino' || incoming.user_gender === 'feminino' || incoming.user_gender === 'nao_binario' ? incoming.user_gender : 'nao_informar';
           setUserGender((current) => current === nextGender ? current : nextGender);
+          const nextAiGender = incoming.ai_personality_gender === 'masculino' || incoming.ai_personality_gender === 'feminino' || incoming.ai_personality_gender === 'neutro' ? incoming.ai_personality_gender : 'automatico';
+          setAiPersonalityGender((current) => current === nextAiGender ? current : nextAiGender);
           const nextPersonality = typeof incoming.personality_prompt === 'string' ? incoming.personality_prompt : '';
           if (!personalityDirtyRef.current) {
             setPersonalityPrompt((current) => current === nextPersonality ? current : nextPersonality);
@@ -914,7 +921,7 @@ export default function App() {
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, messages: history },
+        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -1443,6 +1450,19 @@ export default function App() {
                   <option value="masculino">Masculino</option>
                   <option value="feminino">Feminino</option>
                   <option value="nao_binario">Não binário</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="settings-section personality-preference-section">
+              <div className="settings-section-title"><MessageCircleHeart size={17} /> Gênero da personalidade da IA</div>
+              <p>Defina como a IA deve se apresentar e flexionar palavras sobre si mesma. Isso é separado do gênero escolhido para você.</p>
+              <label className="personality-gender-control">Gênero da IA
+                <select className="personality-gender-select" value={aiPersonalityGender} onChange={(event) => setAiPersonalityGender(event.target.value as typeof aiPersonalityGender)}>
+                  <option value="automatico">Automático (a personalidade decide)</option>
+                  <option value="feminino">Feminino</option>
+                  <option value="masculino">Masculino</option>
+                  <option value="neutro">Neutro</option>
                 </select>
               </label>
             </div>
