@@ -391,7 +391,7 @@ Deno.serve(async (req: Request) => {
       if (!key) return json({ error: "Falta CHAT_PERSONALITY_API_KEY (OpenRouter)." }, 503);
       const headers = { "HTTP-Referer": "https://ai-workbench.app", "X-Title": "AI Workbench Conversation" };
       const systemPrompt = PERSONALITY_PROMPT + buildPersonalityLayer(personalityPrompt)
-        + "\\n\\nMODO CONVERSA — REGRA PRIORITÁRIA: esta experiência é exclusivamente para conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Mantenha a personalidade configurada muito presente, espontânea e consistente; reaja ao conteúdo real da mensagem, faça perguntas naturais quando fizer sentido e evite respostas genéricas. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
+        + "\n\nMODO CONVERSA — REGRA PRIORITÁRIA: esta experiência é exclusivamente para conversa em texto. Não gere imagens, não chame ferramentas, não crie arquivos, sites, aplicativos ou projetos e não produza blocos de código. Se o usuário pedir algo técnico, explique em linguagem natural, sem escrever o código. Mantenha a personalidade configurada muito presente, espontânea e consistente; reaja ao conteúdo real da mensagem, faça perguntas naturais quando fizer sentido e evite respostas genéricas. Seja breve em mensagens simples e desenvolva mais quando o assunto exigir.";
       const answer = await openAI(OPENROUTER, key, PERSONA_MODEL, [{ role: "system", content: systemPrompt }, ...messages], 1.0, headers, 1800);
       return json({ answer, model: PERSONA_MODEL, selected_mode: mode, answer_kind: "conversation", effort: "n/a" });
     }
