@@ -1373,7 +1373,7 @@ export default function App() {
                       <div className="chat-menu-heading">Modo de trabalho</div>
                       <div className="chat-mode-options">
                         {modes.map((item) => {
-                          const Icon = item.id === 'auto' ? Sparkles : item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : item.id === 'conversation' ? MessageCircle : MessageCircleHeart;
+                          const Icon = item.id === 'auto' ? Sparkles : item.id === 'general' ? Code2 : item.id === 'stormworks' ? Bot : item.id === 'image' ? ImageIcon : item.id === 'conversation' ? MessageCircle : item.id === 'agent' ? Workflow : MessageCircleHeart;
                           return (
                             <button key={item.id} type="button" className={'chat-mode-option' + (mode === item.id ? ' chat-mode-option--active' : '')} onClick={() => { void changeMode(item.id); setModeMenuOpen(false); }}>
                               <Icon size={15} />
