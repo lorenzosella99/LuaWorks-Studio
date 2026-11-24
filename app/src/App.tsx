@@ -8,6 +8,7 @@ import {
 import MarkdownMessage from './components/MarkdownMessage';
 import LuaValidator from './components/LuaValidator';
 import ToolsHub from './tools/ToolsHub';
+import WorkbenchFeatures from './features/WorkbenchFeatures';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import type { ChatMessage, ChatMode, Conversation } from './types';
 
@@ -268,7 +269,7 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [view, setView] = useState<'chat' | 'lua-validator' | 'tools'>('chat');
+  const [view, setView] = useState<'chat' | 'lua-validator' | 'tools' | 'features'>('chat');
   const [mode, setMode] = useState<ChatMode>('auto');
   const [imageProfile, setImageProfile] = useState<'auto' | 'precision' | 'creative' | 'realism'>(() => {
     const saved = window.localStorage.getItem('ai-workbench-image-profile-v1');
@@ -919,9 +920,12 @@ export default function App() {
       }
 
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
+      // Memórias explícitas recuperadas da conta autenticada; nunca misturar usuários.
+      const { data: savedMemories } = await supabase.from('assistant_memories').select('content,category').eq('user_id', session.user.id).order('updated_at', { ascending: false }).limit(20);
+      const memoryContext = (savedMemories ?? []).map((item) => '[' + item.category + '] ' + item.content).join('\\n').slice(0, 6000);
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, messages: history },
+        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, memoryContext, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -1254,6 +1258,7 @@ export default function App() {
         <div className="tool-navigation">
           <button className={`tool-nav-item ${view === 'tools' ? 'tool-nav-item--active' : ''}`} onClick={() => { setView('tools'); setSidebarOpen(false); }}><Wrench size={15} /><span>Central de ferramentas</span><span className="tool-nav-tag">LOCAL</span></button>
           <button className={`tool-nav-item ${view === 'lua-validator' ? 'tool-nav-item--active' : ''}`} onClick={() => { setView('lua-validator'); setSidebarOpen(false); }}><Code2 size={15} /><span>Validador Lua</span><span className="tool-nav-tag">LOCAL</span></button>
+          <button className={'tool-nav-item ' + (view === 'features' ? 'tool-nav-item--active' : '')} onClick={() => { setView('features'); setSidebarOpen(false); }}><Sparkles size={15} /><span>Recursos inteligentes</span><span className="tool-nav-tag">LAB</span></button>
         </div>
 
         <div className="sidebar-bottom">
@@ -1275,7 +1280,7 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-left">
             <button className="icon-button mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={19} /></button>
-            <div className="workspace-label"><span className="workspace-kicker">{view !== 'chat' ? 'FERRAMENTAS LOCAIS' : 'WORKSPACE'}</span><span className="workspace-name">{view === 'tools' ? 'Central de ferramentas' : view === 'lua-validator' ? 'Validador Lua' : activeConversation?.title ?? 'Novo projeto'}</span></div>
+            <div className="workspace-label"><span className="workspace-kicker">{view !== 'chat' ? 'FERRAMENTAS LOCAIS' : 'WORKSPACE'}</span><span className="workspace-name">{view === 'tools' ? 'Central de ferramentas' : view === 'lua-validator' ? 'Validador Lua' : view === 'features' ? 'Recursos inteligentes' : activeConversation?.title ?? 'Novo projeto'}</span></div>
           </div>
           <div className="topbar-right">
             <span className="secure-label"><span className="secure-dot" /> CONECTADO</span>
@@ -1284,7 +1289,7 @@ export default function App() {
           </div>
         </header>
 
-        {view === 'lua-validator' ? <LuaValidator /> : view === 'tools' ? <ToolsHub /> : <>
+        {view === 'lua-validator' ? <LuaValidator /> : view === 'tools' ? <ToolsHub /> : view === 'features' ? <WorkbenchFeatures userId={session.user.id} messages={messages} onSendToChat={(prompt) => { setView('chat'); setMode('auto'); setDraft(prompt); setSidebarOpen(false); window.setTimeout(() => inputRef.current?.focus(), 50); }} /> : <>
         <div className="chat-scroll" ref={scrollRef} onScroll={(event) => {
           const el = event.currentTarget;
           setIsNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 140);
