@@ -283,6 +283,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
   const [personalityPrompt, setPersonalityPrompt] = useState('');
+  const [userGender, setUserGender] = useState<'masculino' | 'feminino' | 'nao_binario' | 'nao_informar'>('nao_informar');
   const [personalitySaving, setPersonalitySaving] = useState(false);
   const [personalitySaved, setPersonalitySaved] = useState(true);
   const personalityDirtyRef = useRef(false);
@@ -495,7 +496,7 @@ export default function App() {
     const loadPreferences = async () => {
       const { data, error } = await client
         .from('user_preferences')
-        .select('appearance, effort_by_mode, preferred_mode, personality_prompt')
+        .select('appearance, effort_by_mode, preferred_mode, personality_prompt, user_gender')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -509,6 +510,7 @@ export default function App() {
         setAppearance(normalizeAppearanceSettings(data.appearance));
         setEffortByMode(normalizeEffortSettings(data.effort_by_mode));
         setPersonalityPrompt(typeof data.personality_prompt === 'string' ? data.personality_prompt : '');
+        setUserGender(data.user_gender === 'masculino' || data.user_gender === 'feminino' || data.user_gender === 'nao_binario' ? data.user_gender : 'nao_informar');
         personalityDirtyRef.current = false;
         setPersonalitySaved(true);
         if (modes.some((item) => item.id === data.preferred_mode)) {
@@ -523,6 +525,7 @@ export default function App() {
             effort_by_mode: effortByMode,
             preferred_mode: mode,
             personality_prompt: personalityPrompt,
+            user_gender: userGender,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
         if (seedError && !cancelled) {
@@ -549,6 +552,7 @@ export default function App() {
       appearance,
       effort_by_mode: effortByMode,
       preferred_mode: mode,
+      user_gender: userGender,
       updated_at: new Date().toISOString(),
     };
     const timeout = window.setTimeout(() => {
@@ -561,7 +565,7 @@ export default function App() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [appearance, effortByMode, mode, preferencesReadyFor, session?.user?.id, showToast]);
+  }, [appearance, effortByMode, mode, userGender, preferencesReadyFor, session?.user?.id, showToast]);
 
   // Uma única inscrição por conta: sem filtro de coluna no servidor, pois a validação
   // anterior rejeitava user_id; RLS e a checagem local continuam isolando os dados.
@@ -632,6 +636,7 @@ export default function App() {
             effort_by_mode?: unknown;
             preferred_mode?: unknown;
             personality_prompt?: unknown;
+            user_gender?: unknown;
           };
           if (payload.eventType === 'DELETE' || incoming.user_id !== userId) return;
 
@@ -639,6 +644,8 @@ export default function App() {
           const nextEfforts = normalizeEffortSettings(incoming.effort_by_mode);
           setAppearance((current) => JSON.stringify(current) === JSON.stringify(nextAppearance) ? current : nextAppearance);
           setEffortByMode((current) => JSON.stringify(current) === JSON.stringify(nextEfforts) ? current : nextEfforts);
+          const nextGender = incoming.user_gender === 'masculino' || incoming.user_gender === 'feminino' || incoming.user_gender === 'nao_binario' ? incoming.user_gender : 'nao_informar';
+          setUserGender((current) => current === nextGender ? current : nextGender);
           const nextPersonality = typeof incoming.personality_prompt === 'string' ? incoming.personality_prompt : '';
           if (!personalityDirtyRef.current) {
             setPersonalityPrompt((current) => current === nextPersonality ? current : nextPersonality);
@@ -907,7 +914,7 @@ export default function App() {
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { mode, effortByMode, imageProfile, personalityPrompt, messages: history },
+        body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, messages: history },
       });
       if (error) {
         const details = typeof data?.error === 'string' ? data.error : error.message;
@@ -1426,6 +1433,19 @@ export default function App() {
           <section className="modal-card settings-modal">
             <div className="modal-header"><div><span className="modal-eyebrow">PREFERÊNCIAS</span><h2>Configurações</h2></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X size={18} /></button></div>
             <AppearanceSettingsPanel value={appearance} onChange={setAppearance} />
+
+            <div className="settings-section personality-preference-section">
+              <div className="settings-section-title"><MessageCircle size={17} /> Como a IA deve se referir a você</div>
+              <p>Escolha seu gênero para a personalidade usar pronomes e concordância adequados. A escolha fica salva na sua conta e sincronizada entre dispositivos.</p>
+              <label className="personality-gender-control">Gênero
+                <select className="personality-gender-select" value={userGender} onChange={(event) => setUserGender(event.target.value as typeof userGender)}>
+                  <option value="nao_informar">Não informar / linguagem neutra</option>
+                  <option value="masculino">Masculino</option>
+                  <option value="feminino">Feminino</option>
+                  <option value="nao_binario">Não binário</option>
+                </select>
+              </label>
+            </div>
 
             <div className="settings-section personality-preference-section">
               <div className="settings-section-title"><MessageCircleHeart size={17} /> Personalidade salva</div>
