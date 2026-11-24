@@ -230,7 +230,8 @@ function AppearanceSettingsPanel({ value, onChange }: { value: AppearanceSetting
 
 const modes: Array<{ id: ChatMode; label: string; short: string; description: string }> = [
   { id: 'auto', label: 'Automático', short: 'Auto', description: 'A IA escolhe o modo mais adequado para cada pedido' },
-  { id: 'general', label: 'Geral e Código', short: 'Geral', description: 'Conversa normal e programação quando você pedir' },\n  { id: 'agent', label: 'Modo agente', short: 'Agente', description: 'Planeja tarefas e executa etapas possíveis com validação' },
+  { id: 'general', label: 'Geral e Código', short: 'Geral', description: 'Conversa normal e programação quando você pedir' },
+  { id: 'agent', label: 'Modo agente', short: 'Agente', description: 'Planeja tarefas e executa etapas possíveis com validação' },
   { id: 'stormworks', label: 'Lua · Stormworks', short: 'Stormworks', description: 'Lua vanilla · revisão e validação de código' },
   { id: 'image', label: 'Gerar Imagem', short: 'Imagem', description: 'Criação visual a partir de descrições' },
   { id: 'personality', label: 'Personalidade', short: 'Persona', description: 'Converse com o estilo e personalidade que você definir' },
