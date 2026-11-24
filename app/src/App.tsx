@@ -923,7 +923,9 @@ export default function App() {
       const history = nextMessages.map((item) => ({ role: item.role, content: item.content }));
       // Memórias explícitas recuperadas da conta autenticada; nunca misturar usuários.
       const { data: savedMemories } = await supabase.from('assistant_memories').select('content,category').eq('user_id', session.user.id).order('updated_at', { ascending: false }).limit(20);
-      const memoryContext = (savedMemories ?? []).map((item) => '[' + item.category + '] ' + item.content).join('\\n').slice(0, 6000);
+      const memoryContext = (savedMemories ?? []).map((item) => '[' + item.category + '] ' + item.content).join('\n').slice(0, 6000);
+      const { data: bondProfile } = await supabase.from('ai_relationship_profiles').select('bond_level,mood,notes').eq('user_id', session.user.id).maybeSingle();
+      const relationshipContext = bondProfile ? 'vínculo ' + bondProfile.bond_level + '/100; humor ' + bondProfile.mood + '; notas: ' + bondProfile.notes : '';
       recordApiRequest(mode);
       const { data, error } = await supabase.functions.invoke('chat-ai', {
         body: { mode, effortByMode, imageProfile, personalityPrompt, userGender, aiPersonalityGender, memoryContext, relationshipContext, messages: history },
