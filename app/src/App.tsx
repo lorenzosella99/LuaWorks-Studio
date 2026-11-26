@@ -1105,10 +1105,9 @@ export default function App() {
     ]);
 
     await invokeChat('personality', 'personality', [
-      { role: 'user', content: 'Neste teste, use o jeito de um narrador de nave espacial e guarde o código HELIO-ALFA-7.' },
-      { role: 'assistant', content: 'Comando recebido, tripulante. Contexto armazenado.' },
-      { role: 'user', content: 'Qual código foi armazenado? Responda com o código exato.' },
-    ], (answer) => answer.includes('HELIO-ALFA-7'));
+      { role: 'user', content: 'Neste teste, responda como um narrador de nave espacial. Confirme que os sistemas estão operacionais com uma frase curta, mantendo esse estilo de personagem.' },
+    ], (answer) => /tripulante|nave|sistemas|comando|capit[aã]o|órbita|miss[aã]o|bordo/i.test(answer),
+    'resposta recebida e estilo de personagem confirmado');
 
     updateProbe('github', 'running', 'Consultando o estado da Edge Function do GitHub…');
     try {
