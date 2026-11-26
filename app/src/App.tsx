@@ -283,6 +283,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sessionActionBusy, setSessionActionBusy] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => loadAppearanceSettings());
   const [personalityPrompt, setPersonalityPrompt] = useState('');
   const [userGender, setUserGender] = useState<'masculino' | 'feminino' | 'nao_binario' | 'nao_informar'>('nao_informar');
@@ -311,6 +312,7 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<string | null>(null);
+  const lastBackgroundRefreshAt = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
   const currentMode = modes.find((item) => item.id === mode) ?? modes[0];
   useEffect(() => { window.localStorage.setItem('ai-workbench-image-profile-v1', imageProfile); }, [imageProfile]);
@@ -692,7 +694,7 @@ export default function App() {
       const openConversation = activeIdRef.current;
       if (openConversation) void loadMessages(openConversation);
     };
-    const interval = window.setInterval(refresh, 10_000);
+    const interval = window.setInterval(refresh, 30_000);
     return () => window.clearInterval(interval);
   }, [loadConversations, loadMessages, realtimeConnected, session?.user?.id]);
 
@@ -701,6 +703,10 @@ export default function App() {
     if (!session?.user?.id) return;
     const refreshFromServer = () => {
       if (document.visibilityState !== 'visible') return;
+      // focus + visibilitychange podem disparar juntos; agrupa a atualização em uma única rodada.
+      const now = Date.now();
+      if (now - lastBackgroundRefreshAt.current < 5_000) return;
+      lastBackgroundRefreshAt.current = now;
       void loadConversations();
       if (activeId) void loadMessages(activeId);
     };
@@ -799,9 +805,25 @@ export default function App() {
 
   async function signOut() {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     setSettingsOpen(false);
     setSidebarOpen(false);
+  }
+
+  async function disconnectOtherDevices() {
+    if (!supabase || sessionActionBusy) return;
+    const confirmed = window.confirm('Desconectar todos os outros dispositivos e navegadores desta conta? Este dispositivo continuará conectado.');
+    if (!confirmed) return;
+    setSessionActionBusy(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'others' });
+      if (error) throw error;
+      showToast('Solicitação enviada: as outras sessões foram desconectadas.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Não foi possível desconectar os outros dispositivos.');
+    } finally {
+      setSessionActionBusy(false);
+    }
   }
 
   async function createConversation(): Promise<Conversation | null> {
@@ -1494,6 +1516,15 @@ export default function App() {
                 setPersonalitySaved(true);
                 showToast('Personalidade salva na sua conta!');
               }}>{personalitySaving ? 'Salvando…' : personalitySaved ? 'Personalidade salva' : 'Salvar personalidade'}</button>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title"><LogOut size={17} /> Segurança da conta · Dispositivos</div>
+              <p>Encerre as sessões de outros navegadores e dispositivos que já entraram nesta conta. A sessão deste dispositivo será mantida.</p>
+              <button className="text-danger-button" type="button" onClick={() => { void disconnectOtherDevices(); }} disabled={sessionActionBusy}>
+                {sessionActionBusy ? 'Desconectando…' : 'Desconectar outros dispositivos'}
+              </button>
+              <div className="security-note">O Supabase revoga os tokens de atualização das outras sessões. Tokens de acesso já emitidos podem continuar válidos até expirarem.</div>
             </div>
 
             <div className="settings-section downloads-section">
