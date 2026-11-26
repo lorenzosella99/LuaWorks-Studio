@@ -152,13 +152,24 @@ export function checkLua(source: string): LuaCheckResult {
     findings.push({ level: 'warning', title: 'Possível divisão por zero', detail: 'Foi encontrada uma divisão por um literal zero. Confira o divisor antes de dividir.' });
   }
 
-  const channelPattern = /\b(?:input\.(?:getNumber|getBool)|output\.setNumber|output\.setBool)\s*\(\s*(-?\d+)/gi;
+  const channelPattern = /\\b(input\\.getNumber|input\\.getBool|output\\.setNumber|output\\.setBool)\\s*\\(\\s*(-?\\d+)/gi;
+  const seenChannels = new Set<string>();
   for (const match of masked.matchAll(channelPattern)) {
-    const channel = Number(match[1]);
-    if (channel < 1 || channel > 32) {
-      findings.push({ level: 'warning', title: 'Canal fora da faixa habitual', detail: `Foi encontrado o canal ${channel}; confira se o número está entre 1 e 32.` });
-      break;
+    const fn = match[1].toLowerCase();
+    const channel = Number(match[2]);
+    const direction = fn.startsWith('input.') ? 'entrada' : 'saída';
+    const type = fn.toLowerCase().includes('number') ? 'Number' : 'Bool';
+    const key = direction + ':' + type + ':' + channel;
+    if (seenChannels.has(key)) continue;
+    seenChannels.add(key);
+    if (!Number.isInteger(channel) || channel < 1 || channel > 32) {
+      findings.push({ level: 'error', title: 'Canal inválido', detail: `A ${direction} ${type} usa o canal ${channel}; os canais lógicos válidos vão de 1 a 32.` });
+    } else {
+      findings.push({ level: 'info', title: `Canal de ${direction} identificado`, detail: `Canal ${channel} · ${type}. Confira se a tabela de conexões usa o mesmo tipo e sentido.` });
     }
+  }
+  if (/\\b(?:input\\.(?:getNumber|getBool)|output\\.(?:setNumber|setBool))\\s*\\(\\s*[^0-9\\s]/i.test(masked)) {
+    findings.push({ level: 'warning', title: 'Canal dinâmico', detail: 'Há uma chamada de entrada/saída cujo canal é calculado em tempo de execução. Confira manualmente se o índice fica entre 1 e 32.' });
   }
 
   if (!/\bfunction\s+onTick\s*\(/.test(masked) && !/\bfunction\s+onDraw\s*\(/.test(masked)) {
