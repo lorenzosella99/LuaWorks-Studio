@@ -158,17 +158,33 @@ function isCodeRequest(prompt: string): boolean {
 function luaIssues(answer: string): string[] {
   const blocks = luaBlocks(answer);
   const issues: string[] = [];
-  if (!blocks.length) return ["A resposta não contém um bloco Markdown Lua completo."];
-  blocks.forEach((code, index) => {
-    if (Array.from(code).length > 4096) issues.push("Bloco " + (index + 1) + " excede 4.096 caracteres.");
-    if (/\b(?:os|io)\s*[.:]|\b(?:package|debug)\s*[.:]|\b(?:require|dofile|loadfile)\s*\(/i.test(code)) {
-      issues.push("Bloco " + (index + 1) + " contém uma API bloqueada para o ambiente vanilla.");
+  if (blocks.length !== 1) return [blocks.length === 0
+    ? "A resposta não contém um bloco Markdown Lua completo."
+    : "A resposta deve conter exatamente um bloco Lua completo para este microcontrolador."];
+  const code = blocks[0];
+  if (Array.from(code).length > 4096) issues.push("O bloco excede 4.096 caracteres.");
+  const masked = code
+    .replace(/--\\[(=*)\\[[\\s\\S]*?\\]\\1\\]/g, (s) => s.replace(/[^\\r\\n]/g, " "))
+    .replace(/--[^\\r\\n]*/g, (s) => " ".repeat(s.length))
+    .replace(/(["'])((?:\\\\.|(?!\\1)[^\\\\])*?)\\1/g, (s) => s.replace(/[^\\r\\n]/g, " "));
+  if (/\\b(?:os|io)\\s*[.:]|\\b(?:package|debug)\\s*[.:]|\\b(?:require|dofile|loadfile)\\s*\\(/i.test(masked)) {
+    issues.push("O código contém uma API bloqueada para o ambiente vanilla.");
+  }
+  if (!/\\bfunction\\s+onTick\\s*\\(/i.test(masked) && !/\\bfunction\\s+onDraw\\s*\\(/i.test(masked)) {
+    issues.push("O código não apresenta onTick() nem onDraw().");
+  }
+  const calls = [...masked.matchAll(/\\b(input\\.getNumber|input\\.getBool|output\\.setNumber|output\\.setBool)\\s*\\(\\s*(-?\\d+)/gi)];
+  for (const match of calls) {
+    const channel = Number(match[2]);
+    const direction = match[1].toLowerCase().startsWith("input.") ? "entrada" : "saída";
+    if (!Number.isInteger(channel) || channel < 1 || channel > 32) {
+      issues.push("Canal de " + direction + " " + channel + " inválido; use canais de 1 a 32.");
     }
-    if (!/\bfunction\s+(?:onTick|onDraw)\s*\(/i.test(code)) {
-      issues.push("Bloco " + (index + 1) + " não apresenta onTick() nem onDraw().");
-    }
-  });
-  return issues;
+  }
+  if (/\\b(?:input\\.(?:getNumber|getBool)|output\\.(?:setNumber|setBool))\\s*\\(\\s*[^0-9\\s]/i.test(masked)) {
+    issues.push("Há um canal dinâmico que não pode ser conferido; use índices explícitos de 1 a 32.");
+  }
+  return [...new Set(issues)];
 }
 
 async function reviewAndImprove(
