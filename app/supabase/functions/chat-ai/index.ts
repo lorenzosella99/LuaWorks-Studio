@@ -164,16 +164,16 @@ function luaIssues(answer: string): string[] {
   const code = blocks[0];
   if (Array.from(code).length > 4096) issues.push("O bloco excede 4.096 caracteres.");
   const masked = code
-    .replace(/--\\[(=*)\\[[\\s\\S]*?\\]\\1\\]/g, (s) => s.replace(/[^\\r\\n]/g, " "))
-    .replace(/--[^\\r\\n]*/g, (s) => " ".repeat(s.length))
-    .replace(/(["'])((?:\\\\.|(?!\\1)[^\\\\])*?)\\1/g, (s) => s.replace(/[^\\r\\n]/g, " "));
-  if (/\\b(?:os|io)\\s*[.:]|\\b(?:package|debug)\\s*[.:]|\\b(?:require|dofile|loadfile)\\s*\\(/i.test(masked)) {
+    .replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, (s) => s.replace(/[^\r\n]/g, " "))
+    .replace(/--[^\r\n]*/g, (s) => " ".repeat(s.length))
+    .replace(/(["'])((?:\\.|(?!\1)[^\\])*?)\1/g, (s) => s.replace(/[^\r\n]/g, " "));
+  if (/\b(?:os|io)\s*[.:]|\b(?:package|debug)\s*[.:]|\b(?:require|dofile|loadfile)\s*\(/i.test(masked)) {
     issues.push("O código contém uma API bloqueada para o ambiente vanilla.");
   }
-  if (!/\\bfunction\\s+onTick\\s*\\(/i.test(masked) && !/\\bfunction\\s+onDraw\\s*\\(/i.test(masked)) {
+  if (!/\bfunction\s+onTick\s*\(/i.test(masked) && !/\bfunction\s+onDraw\s*\(/i.test(masked)) {
     issues.push("O código não apresenta onTick() nem onDraw().");
   }
-  const calls = [...masked.matchAll(/\\b(input\\.getNumber|input\\.getBool|output\\.setNumber|output\\.setBool)\\s*\\(\\s*(-?\\d+)/gi)];
+  const calls = [...masked.matchAll(/\b(input\.getNumber|input\.getBool|output\.setNumber|output\.setBool)\s*\(\s*(-?\d+)/gi)];
   for (const match of calls) {
     const channel = Number(match[2]);
     const direction = match[1].toLowerCase().startsWith("input.") ? "entrada" : "saída";
@@ -181,7 +181,7 @@ function luaIssues(answer: string): string[] {
       issues.push("Canal de " + direction + " " + channel + " inválido; use canais de 1 a 32.");
     }
   }
-  if (/\\b(?:input\\.(?:getNumber|getBool)|output\\.(?:setNumber|setBool))\\s*\\(\\s*[^0-9\\s]/i.test(masked)) {
+  if (/\b(?:input\.(?:getNumber|getBool)|output\.(?:setNumber|setBool))\s*\(\s*[^0-9\s]/i.test(masked)) {
     issues.push("Há um canal dinâmico que não pode ser conferido; use índices explícitos de 1 a 32.");
   }
   return [...new Set(issues)];
