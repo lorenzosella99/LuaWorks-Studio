@@ -152,7 +152,7 @@ export function checkLua(source: string): LuaCheckResult {
     findings.push({ level: 'warning', title: 'Possível divisão por zero', detail: 'Foi encontrada uma divisão por um literal zero. Confira o divisor antes de dividir.' });
   }
 
-  const channelPattern = /\\b(input\\.getNumber|input\\.getBool|output\\.setNumber|output\\.setBool)\\s*\\(\\s*(-?\\d+)/gi;
+  const channelPattern = /\b(input\.getNumber|input\.getBool|output\.setNumber|output\.setBool)\s*\(\s*(-?\d+)/gi;
   const seenChannels = new Set<string>();
   for (const match of masked.matchAll(channelPattern)) {
     const fn = match[1].toLowerCase();
@@ -168,7 +168,7 @@ export function checkLua(source: string): LuaCheckResult {
       findings.push({ level: 'info', title: `Canal de ${direction} identificado`, detail: `Canal ${channel} · ${type}. Confira se a tabela de conexões usa o mesmo tipo e sentido.` });
     }
   }
-  if (/\\b(?:input\\.(?:getNumber|getBool)|output\\.(?:setNumber|setBool))\\s*\\(\\s*[^0-9\\s]/i.test(masked)) {
+  if (/\b(?:input\.(?:getNumber|getBool)|output\.(?:setNumber|setBool))\s*\(\s*[^0-9\s]/i.test(masked)) {
     findings.push({ level: 'warning', title: 'Canal dinâmico', detail: 'Há uma chamada de entrada/saída cujo canal é calculado em tempo de execução. Confira manualmente se o índice fica entre 1 e 32.' });
   }
 
