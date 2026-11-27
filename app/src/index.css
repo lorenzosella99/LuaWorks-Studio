@@ -40,7 +40,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .new-chat-button svg { color: var(--accent); }
 .shortcut { margin-left: auto; color: #666; font: 11px 'DM Mono', monospace; }
 .sidebar-section-label { padding: 27px 10px 10px; color: #696969; font: 500 9px 'DM Mono', monospace; letter-spacing: 1.5px; }
-.conversation-list { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; padding-bottom: 14px; scrollbar-width: thin; scrollbar-color: #333 transparent; }
+.conversation-list { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 2px 14px 0; scrollbar-width: thin; scrollbar-color: #555 transparent; }\n.conversation-list::-webkit-scrollbar { width: 7px; }\n.conversation-list::-webkit-scrollbar-track { background: transparent; }\n.conversation-list::-webkit-scrollbar-thumb { background: #454545; border: 1px solid #151515; border-radius: 8px; }\n.conversation-list::-webkit-scrollbar-thumb:hover { background: #666; }
 .conversation-item { width: 100%; height: 37px; display: flex; align-items: center; gap: 9px; padding: 0 10px; color: #9b9b9b; background: transparent; border: 0; border-radius: 8px; cursor: pointer; text-align: left; font-size: 12px; transition: .15s; }
 .conversation-item:hover, .conversation-item--active { background: #222; color: #e6e6e6; }
 .conversation-item--active { box-shadow: inset 2px 0 0 var(--accent); }
